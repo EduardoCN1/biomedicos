@@ -169,7 +169,7 @@ biomedicos/
   | `GET /labels/m`       |                                | 
   | `GET /get_stage_info?t_label=T2&n_label=N1&m_label=M0` | 
   
-  **Ver** [API.md](docs/API.md) **para ejemplos y respuestas** Sobre más información.
+  >**Ver** [API.md](docs/API.md) **para ejemplos y respuestas.**
 
 ## Variables de Entorno
 
@@ -303,7 +303,7 @@ biomedicos/
   - Asegurar backend está corriendo
   - Verificar URL en `entradas.js` es `http://127.0.0.1:5000`
 
-  Ver [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) para más soluciones.
+  > **Ver** [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) **para más soluciones.**
 
 ## Próximas Mejoras
 - [ ] Autenticación JWT
