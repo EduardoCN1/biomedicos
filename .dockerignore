@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.env.*
+.git/
+.gitignore
+.vscode/
+.idea/
+node_modules/
+package-lock.json
+*.log
+*.dump
+data/backups/

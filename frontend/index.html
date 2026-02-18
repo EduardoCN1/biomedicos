@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Nuevo Registro</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="../node_modules/bootstrap/dist/css/bootstrap.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/stilous.css">
+    <!-- Toastr CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+
+    <style>
+        .info-text {
+            display: none;
+            margin-left: 10px;
+            font-weight: normal;
+            color: #6c757d;
+        }
+        .accordion-button.collapsed .info-text {
+            display: inline;
+        }
+
+        .titulo {
+            color: #10231B;
+            padding: 20px 50px; 
+        }
+    </style>
+</head>
+
+<body class="bg-gradient fw-medium">
+    <div style="color: #10231B;" class="titulo">
+        <center>
+           Ingrese los datos biomédicos
+        </center>
+    </div>
+    
+    <div class="accordion" id="accordionExample">
+        <div class="accordion-item border-bottom-0">
+            <h2 class="accordion-header" id="headingOne">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne" onclick="personalButton()">
+                    Antecedentes Personales
+                    <span class="info-text" id="personalInfo"></span>
+                </button>
+            </h2>
+            <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
+                <div class="accordion-body">
+                    <div class="align-items-center input-group">
+                        <table class="table">
+                            <tr>
+                                <td>Edad</td>
+                                <td>
+                                    <input class="input-range form-control" name="edad" id="edad" type="range" min="0" max="100" oninput="updateAgeOutput(this.value)" />
+                                    <span id="ageOutput" class="output-range">50</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Sexo</td>
+                                <div id="mensajeError" style="display: none; color: red;"></div>
+                                <td><select class="form-select" name="sexo" id="sexo">
+                                    <option value="selected">Selecciona una opción</option>
+                                    <option>Masculino</option>
+                                    <option>Femenino</option>
+                                    <option>Intersexual</option>
+                                </select></td>
+                                <td>Preferencia</td>
+                                <td><select name="Preferencia" id="Preferencia" class="form-select form-control">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Heterosexual</option>
+                                    <option>Otro</option>
+                                </select></td>
+                            </tr>
+                            <tr>
+                                <td>Peso</td>
+                                <td>
+                                    <input class="input-range form-control" name="peso" id="peso" type="range" min="30" max="200" value="70" oninput="updateWeightOutput(this.value)" />
+                                    <span id="weightOutput" class="output-range">70 kg</span>
+                                </td>
+                                <td>Talla</td>
+                                <td>
+                                    <input class="input-range form-control" name="talla" id="talla" type="range" min="100" max="220" value="160" oninput="updateHeightOutput(this.value)" />
+                                    <span id="heightOutput" class="output-range">160 cm</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Antecedentes ginecológicos</td>
+                                <td><select class="form-select" name="gineco" id="gineco">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Ninguno</option>
+                                    <option>Premenopausica</option>
+                                    <option>Menopausica</option>
+                                </select></td>
+                                <td>Indice tabaquico</td>
+                                <td><select class="form-select" name="indice" id="indice">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Menor de 10</option>
+                                    <option>De 10 a 20</option>
+                                    <option>De 21 a 40</option>
+                                    <option>Mas de 41</option>
+                                </select></td>
+                            </tr>
+                            <tr>
+                                <td>Comorbilidades</td>
+                                <td>
+                                    <input type="radio" id="ninguna" name="ninguna" value="ninguna">
+                                    <label for="ninguna">Ninguna</label><br>
+                                    <input type="radio" id="Diabetes" name="Diabetes" value="Diabetes">
+                                    <label for="Diabetes">Diabetes</label><br>
+                                </td>
+                                <td>
+                                    <input type="radio" id="Hipertension" name="Hipertension" value="Hipertension">
+                                    <label for="Hipertensión">Hipertensión</label><br>
+                                    <input type="radio" id="VIH" name="VIH" value="VIH">
+                                    <label for="VIH">VIH</label><br>
+                                </td>
+                                <td>Consumo de drogas</td>
+                                <td><select class="form-select" name="drogas" id="drogas">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Si</option>
+                                    <option>No</option>
+                                </select></td>
+                            </tr>
+                            <tr>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td>Consumo de alcohol</td>
+                                <td><select class="form-select" name="alcohol" id="alcohol">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Si</option>
+                                    <option>No</option>
+                                </select></td>
+                            </tr>
+                        </table>
+                        <br>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingTwo">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo" onclick="heredoButton()">
+                    Antecedentes Heredofamiliares
+                    <span class="info-text" id="heredofamInfo"></span>
+                </button>
+            </h2>
+            <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#accordionExample">
+                <div class="accordion-body">
+                    <div>
+                        <br>
+                        <table class="table">
+                            <tr>
+                                <td>Cancer en su linea de parentesco familiar ascendente?</td>
+                                <td><select class="form-select" name="ascendente" id="ascendente">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Si</option>
+                                    <option>No</option>
+                                </select></td>
+                                <td>Cancer en su linea de parentesco familiar lateral?</td>
+                                <td><select class="form-select" name="lateral" id="lateral">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Si</option>
+                                    <option>No</option>
+                                </select></td>
+                            </tr>
+                            <tr>
+                                <td>Cancer en su linea de parentesco familiar descendente?</td>
+                                <td><select class="form-select" name="descendente" id="descendente">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Si</option>
+                                    <option>No</option>
+                                </select></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingThree">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree" onclick="estadiaButton()">
+                    Estadía Tumoral
+                    <span class="info-text" id="tumoralInfo"></span>
+                </button>
+            </h2>
+            <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#accordionExample">
+                <div class="accordion-body">
+                    <div class="contenidosumary">
+                        <br>
+                        <table class="table">
+                            <tr>
+                                <td>Número de tumores</td>
+                                <td>
+                                    <input class="input-range form-control" name="T" id="T" type="range" min="0" max="4" value="0" oninput="updateTumorCount(this.value)" />
+                                    <span id="tumorCountOutput" class="output-range">0</span>
+                                </td>
+                                <td>Nódulos linfáticos infectados</td>
+                                <td>
+                                    <input class="input-range form-control" name="N" id="N" type="range" min="0" max="4" value="0" oninput="updateNodeCount(this.value)" />
+                                    <span id="nodeCountOutput" class="output-range">0</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Metástasis?</td>
+                                <td><select class="form-select" name="M" id="M">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Si</option>
+                                    <option>No</option>
+                                </select></td>
+                            </tr>
+                        </table>
+                        <br>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingFour">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour" aria-expanded="false" aria-controls="collapseFour" onclick="ginecoButton()">
+                    Antecedentes Ginecoobstétricos
+                    <span class="info-text" id="ginecoobstetricInfo"></span>
+                </button>
+            </h2>
+            <div id="collapseFour" class="accordion-collapse collapse" aria-labelledby="headingFour" data-bs-parent="#accordionExample">
+                <div class="accordion-body">
+                    <div class="contenidosumary">
+                        <br>
+                        <table class="table">
+                            <tr>
+                                <td>Receptores de progesterona</td>
+                                <td><select class="form-select" name="RP" id="RP">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Positivo</option>
+                                    <option>Negativo</option>
+                                </select></td>
+                                <td>Receptores de estrógeno</td>
+                                <td><select class="form-select" name="RE" id="RE">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Positivo</option>
+                                    <option>Negativo</option>
+                                </select></td>
+                            </tr>
+                            <tr>
+                                <td>HER2</td>
+                                <td><select class="form-select" name="HER2" id="HER2">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>Positivo</option>
+                                    <option>Negativo</option>
+                                </select></td>
+                                <td>Grado histológico</td>
+                                <td><select class="form-select" name="Grade" id="Grade">
+                                    <option value="" disabled selected>Selecciona una opción</option>
+                                    <option>I</option>
+                                    <option>II</option>
+                                    <option>III</option>
+                                    <option>IV</option>
+                                </select></td>
+                            </tr>
+                        </table>
+                        <br>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    
+    <div class="container text-center mt-4">
+        <button class="btn btn-primary btn-lg" onclick="enviar()">Enviar</button>
+    </div>
+
+    <div id="resultados" class="container mt-4">
+        <br>
+        <details id="res1" style="display: none;">
+            <summary>Posible Tratamiento uno:</summary>
+            <div class="contenidosumary">
+                <table class="table">
+                    <tr>
+                        <th scope="col">Tests recomendados: </th>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="col">Etapa del cáncer: </th>
+                        <td><label id="1stage"></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="col">Opciones de tratamiento: </th>
+                        <td><label class="treatment"></label></td>
+                        <td><label class="treatment"></label></td>
+                        <td><label class="treatment"></label></td>
+                    </tr>
+                </table>
+            </div>
+        </details>
+
+        <details id="res2" style="display: none;">
+            <summary>Posible Tratamiento dos:</summary>
+            <div class="contenidosumary p-3">
+                <table class="table">
+                    <tr>
+                        <th scope="col">Tests recomendados: </th>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="col">Etapa del cáncer:  </th>
+                        <td><label id="2stage"></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="col">Opciones de tratamiento:  </th>
+                        <td><label class="treatment"></label></td>
+                        <td><label class="treatment"></label></td>
+                        <td><label class="treatment"></label></td>
+                    </tr>
+                </table>
+            </div>
+        </details>
+
+        <details id="res3" style="display: none;">
+            <summary>Posible Tratamiento tres:</summary>
+            <div class="contenidosumary">
+                <table class="table">
+                    <tr>
+                        <th scope="col">Tests recomendados: </th>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                        <td><label class="recommended"></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="col">Etapa del cáncer: </th>
+                        <td><label id="3stage"></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="col">Opciones de tratamiento: </th>
+                        <td><label class="treatment"></label></td>
+                        <td><label class="treatment"></label></td>
+                        <td><label class="treatment"></label></td>
+                    </tr>
+                </table>
+            </div>
+        </details>
+    </div>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="../node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Toastr JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <!-- Custom JS -->
+    <script src="js/entradas.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,76 @@
+
+@import "../node_modules/bootstrap/scss/_functions.scss";
+
+$primary: #E1BDB1;
+$secondary: #ffff;
+
+
+
+
+$theme-colors: ("primary": $primary, "secondary": $secondary);
+$gradient: linear-gradient(to right, $primary, $secondary);
+
+summary { list-style: none; }
+
+details {
+  width: 80%;
+  margin: 0 auto ;
+  background: #eeeeee;
+  margin-bottom: .5rem;
+  box-shadow: 0 .1rem 1rem -.5rem rgba(0,0,0,.4);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+summary {
+  padding: 1rem;
+  display: block;
+  background: #eeeeee;
+  padding-left: 2.2rem;
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+}
+
+summary:before {
+  content: '';
+  border-width: .4rem;
+  border-style: solid;
+  border-color: transparent transparent transparent #303030;
+  position: absolute;
+  top: 1.3rem;
+  left: 1rem;
+  transform: rotate(0);
+  transform-origin: .2rem 50%;
+  transition: .25s transform ease;
+}
+
+details[open] > summary:before {
+  transform: rotate(90deg);
+}
+
+body {
+  height: 100vh;
+}
+
+.accordion {
+  max-width: 900px; 
+  margin: 0 auto; 
+}
+
+.accordion-button::after {
+  content: attr(data-info);
+  display: none;
+  margin-left: 10px;
+  font-weight: normal;
+  color: #6c757d;
+}
+.accordion-button.collapsed::after {
+  display: inline;
+}
+
+
+@import "./node_modules/bootstrap/scss/bootstrap.scss";
+
+
+
