@@ -48,9 +48,19 @@ docker compose --env-file .env.docker up --build
 docker compose --env-file .env.docker up
 ```
 
-### Detener todo
+### Detener todo (al terminar de trabajar)
 ```powershell
 docker compose down
+```
+Esto detiene los contenedores Neo4j y API, y libera los puertos 5000, 7474 y 7687.
+Los datos permanecen en el volumen Docker `biomedicos_neo4j_data`.
+
+Opcionalmente, cierra Docker Desktop si no lo usas para otros proyectos.
+
+**Importante:** Si quieres eliminar los datos tambien:
+```powershell
+# Detener y eliminar volumenes (BORRA DATOS)
+docker compose down -v
 ```
 
 ### Reiniciar solo la API

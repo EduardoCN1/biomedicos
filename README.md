@@ -11,7 +11,6 @@ ___________________________________________________________________
 | **Base Datos**   | Neo4j (graph database)                        |
 | **OS**           | Windows 10/11, Linux/macOS compatible         |
 | **Python**       | 3.11+ (recomendado con Miniforge)             |
-|__________________________________________________________________|
 
 ## Estructura de Carpetas 
 
@@ -119,6 +118,24 @@ biomedicos/
   # Respuesta: "En ejecución"
   ```
 
+### Al Terminar de Trabajar
+
+  **Con Docker:**
+  ```powershell
+  # Detener contenedores (conserva datos)
+  docker compose down
+  ```
+  Esto libera los puertos y detiene Neo4j/API. Los datos permanecen en el volumen Docker.
+  
+  Opcionalmente cierra Docker Desktop si no lo usas para otros proyectos.
+
+  **Sin Docker (Local):**
+  ```powershell
+  # 1. Detener servidor Flask (Ctrl+C en terminal)
+  # 2. Detener Neo4j Desktop: Click "Stop" en la aplicación
+  # 3. Cerrar Neo4j Desktop si deseas
+  ```
+
 ### Atajo Rápido (Sin scripts)
 
   Si prefieres no usar scripts:
@@ -151,7 +168,6 @@ biomedicos/
   | `GET /labels/n`       |                                | 
   | `GET /labels/m`       |                                | 
   | `GET /get_stage_info?t_label=T2&n_label=N1&m_label=M0` | 
-  |________________________________________________________|
       Ver [API.md](docs/API.md) para ejemplos y respuestas.
 
 ## Variables de Entorno
@@ -289,8 +305,6 @@ biomedicos/
   Ver [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) para más soluciones.
 
 ## Próximas Mejoras
-
-- [ ] Dockerizar (Dockerfile + docker-compose)
 - [ ] Autenticación JWT
 - [ ] Frontend React/Vue
 - [ ] Más tests (cobertura 90%+)
