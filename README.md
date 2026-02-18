@@ -168,9 +168,8 @@ biomedicos/
   | `GET /labels/n`       |                                | 
   | `GET /labels/m`       |                                | 
   | `GET /get_stage_info?t_label=T2&n_label=N1&m_label=M0` | 
-  |--------------------------------------------------------|
-    
-**Ver** [API.md](docs/API.md) **para ejemplos y respuestas** Sobre más información.
+  
+  **Ver** [API.md](docs/API.md) **para ejemplos y respuestas** Sobre más información.
 
 ## Variables de Entorno
 
