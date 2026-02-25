@@ -10,7 +10,7 @@ Camino A. Usar Docker
 
 Camino B. Sin Docker
 - Usas conda y Neo4j Desktop
-- Ver [SETUP.md](SETUP.md) y [USO_DIARIO.md](USO_DIARIO.md)
+- Ver [SETUP.md](SETUP.md) y [USO_DIARIO_SIN_DOCKER.md](USO_DIARIO_SIN_DOCKER.md)
 
 ## Requisitos (Docker)
 

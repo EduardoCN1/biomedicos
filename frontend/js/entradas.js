@@ -135,14 +135,21 @@ function enviar(){
     var ascendente= $("#ascendente").val();
     var lateral= $("#lateral").val();
     var descendente= $("#descendente").val();
-    /*
-    var T= $("#T").val(); Tis, T0 - T4
-    var N= $("#N").val(); N0 - N4
-    var M= $("#M").val(); M0, M1
-    */
-    var T= "T2";
-    var N= "N1";
-    var M= "M0";
+    
+    var T= $("#T").val();
+    var N= $("#N").val();
+    var M= $("#M").val();
+    
+    // Validar que hay datos completos
+    if (!edad || !sexo || !talla || !peso) {
+        toastr.error('Por favor completa la información personal (Edad, Sexo, Altura, Peso)', 'Datos incompletos');
+        return;
+    }
+    
+    if (!T || !N || !M) {
+        toastr.error('Por favor completa la Estadía Tumoral (T, N, M)', 'Datos incompletos');
+        return;
+    }
     var RP= $("#RP").val();
     var RE= $("#RE").val();
     var HER2= $("#HER2").val();
@@ -156,63 +163,94 @@ function enviar(){
     const nbiomedicos= new biomedicos(npersona, nheredo, nestadia, nantecede);
     
     console.log("Datos a enviar:", nbiomedicos);
+    
+    // Mostrar loading, ocultar botones
+    const buttonsContainer = document.getElementById('buttonsContainer');
+    const loadingContainer = document.getElementById('loadingContainer');
+    const treatmentsContainer = document.getElementById('treatmentsContainer');
+    
+    buttonsContainer.classList.add('hidden');
+    loadingContainer.classList.add('active');
+    
     // usar la API local por defecto
     const url= "http://127.0.0.1:5000/get_stage_info?t_label=" + T + "&n_label=" + N + "&m_label=" + M;  
     console.log(T, N, M);
+    
     $.ajax({
         type: "GET",
         url: url,
-        /*data: JSON.stringify(nestadia),*/
         contentType: "application/json; charset=utf-8",
         dataType: "json",
         success: function (data) {
-            console.log("Respuesta del servidooor:", data);
-            console.log("jalÃ³");
+            console.log("Respuesta del servidor:", data);
 
-            if (data) {
-                let cont = 0;
-                let resp = "res";
-                let st = "stage";
-
-                //recorre todas las respuestas de data
-                for (let key in data) {
-                    cont++; //para poder recorrer los id's de cada elemento de data
-                    let res = resp + cont; //esto es res1, res2 o res3 (id's de data) dependiendo de la cantidad de respuestas en data                                                   
-                    let respuesta = document.getElementById(res); 
-                    respuesta.style.display = "block"; //muestro la respuesta en turno
-    
-
-                    //recorre todos los recommendedTests de las respuestas recibidas
-                    let recommendedlabels = respuesta.getElementsByClassName("recommended");
-
-                    for (let key2 in data[key].RecommendedTests) {
-                        recommendedlabels[key2].textContent = data[key].RecommendedTests[key2];
-
-                    }
-
-                    //muestra el stage de la respuesta de data en turno
-                    let stage =cont + st; //stage tiene tres id's, 1stage, 2stage y 3stage, aqui se construye el id
-                    let stagelabel = document.getElementById(stage);
-                    stagelabel.textContent = data[key].Stage[0];
-
-
-                    // recorre los treatmentOptions
-                    let treatmentlabels = respuesta.getElementsByClassName("treatment");
-                    for (let key3 in data[key].TreatmentOptions) {
-                        treatmentlabels[key3].textContent = data[key].TreatmentOptions[key3];
+            if (data && data.length > 0) {
+                // Ocultar loading, mostrar tratamientos
+                loadingContainer.classList.remove('active');
+                treatmentsContainer.classList.add('active');
+                
+                // Primero, ocultar todos los tratamientos
+                for (let j = 1; j <= 3; j++) {
+                    const treatmentItem = document.getElementById(`treatment${j}`);
+                    if (treatmentItem) {
+                        treatmentItem.style.display = 'none';
                     }
                 }
                 
+                // Poblar los tratamientos con datos reales
+                for (let i = 0; i < Math.min(data.length, 3); i++) {
+                    const treatmentNum = i + 1;
+                    const treatmentData = data[i];
+                    
+                    // Mostrar el tratamiento
+                    const treatmentItem = document.getElementById(`treatment${treatmentNum}`);
+                    if (treatmentItem) {
+                        treatmentItem.style.display = 'block';
+                    }
+                    
+                    // Actualizar etapa
+                    const etapaElement = document.getElementById(`etapa${treatmentNum}`);
+                    if (etapaElement && treatmentData.Stage && treatmentData.Stage.length > 0) {
+                        etapaElement.textContent = treatmentData.Stage[0];
+                    }
+                    
+                    // Actualizar tests recomendados
+                    const testSection = document.querySelector(`#treatment${treatmentNum} .treatment-section:nth-child(2) .treatment-section-content`);
+                    if (testSection && treatmentData.RecommendedTests) {
+                        testSection.innerHTML = '';
+                        treatmentData.RecommendedTests.forEach(test => {
+                            const div = document.createElement('div');
+                            div.innerHTML = `<span class="treatment-item-label">${test}</span>`;
+                            testSection.appendChild(div);
+                        });
+                    }
+                    
+                    // Actualizar opciones de tratamiento
+                    const treatmentSection = document.querySelector(`#treatment${treatmentNum} .treatment-section:nth-child(3) .treatment-section-content`);
+                    if (treatmentSection && treatmentData.TreatmentOptions) {
+                        treatmentSection.innerHTML = '';
+                        treatmentData.TreatmentOptions.forEach(treatment => {
+                            const div = document.createElement('div');
+                            div.innerHTML = `<span class="treatment-item-label">${treatment}</span>`;
+                            treatmentSection.appendChild(div);
+                        });
+                    }
+                }
+                
+                toastr.success('Tratamientos generados correctamente', 'Éxito');
+            } else {
+                loadingContainer.classList.remove('active');
+                buttonsContainer.classList.remove('hidden');
+                toastr.error('No se encontraron tratamientos para estos parámetros', 'Error');
             }
-
         },
         error: function (error) {
-            console.error("no funciona:", error);
+            console.error("Error al consultar:", error);
+            loadingContainer.classList.remove('active');
+            buttonsContainer.classList.remove('hidden');
+            toastr.error('Error al consultar tratamientos. Verifica que el servidor esté corriendo.', 'Error');
         }
-    
-
-   });
-  
+    });
 }
 
 
