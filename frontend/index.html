@@ -567,7 +567,7 @@
         .treatment-content {
             display: none;
             padding: 0 25px 20px 25px;
-            background-color: rgba(3, 96, 217, 0.08);
+            background-color: white;
         }
 
         .treatment-content.active {
@@ -695,9 +695,9 @@
                     <i class="fas fa-chevron-right button-chevron"></i>
                 </button>
 
-                <button class="action-button" onclick="openModal('gineco')">
+                <button class="action-button" onclick="openModal('IHC')">
                     <i class="fas fa-heartbeat"></i>
-                    <span class="button-text">Antecedentes Ginecoobstétricos</span>
+                    <span class="button-text">Inmunohistoquímica (IHC)</span>
                     <i class="fas fa-chevron-right button-chevron"></i>
                 </button>
 
@@ -905,7 +905,7 @@
                     <div class="section-title">Estadía Tumoral</div>
                     <div class="profile-row three-col">
                         <div class="profile-item">
-                            <div class="profile-label">Num. Tumores</div>
+                            <div class="profile-label">Tamaño del Tumor (T)</div>
                             <div class="profile-value" id="display-T">Sin ingresar</div>
                         </div>
                         <div class="profile-item">
@@ -919,9 +919,9 @@
                     </div>
                 </div>
 
-                <!-- Antecedentes Ginecoobstétricos -->
+                <!-- Inmunohistoquímica (IHC) -->
                 <div class="profile-section">
-                    <div class="section-title">Antecedentes Ginecoobstétricos</div>
+                    <div class="section-title">Inmunohistoquímica (IHC) </div>
                     <div class="profile-row three-col">
                         <div class="profile-item">
                             <div class="profile-label">R. de Progesterona</div>
@@ -979,10 +979,8 @@
                         <div class="form-group">
                             <label class="form-label">Sexo</label>
                             <select id="sexo" class="form-control-custom" onchange="updateProfile()">
-                                <option value="">Seleccione</option>
-                                <option>Masculino</option>
-                                <option>Femenino</option>
-                                <option>Intersexual</option>
+                                  <option selected>Femenino</option>
+                                  <option>Masculino</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -999,32 +997,34 @@
                         <div class="form-group">
                             <label class="form-label">Drogas</label>
                             <select id="drogas" class="form-control-custom" onchange="updateProfile()">
-                                <option value="">Seleccione</option>
+                                <option selected>No</option>
                                 <option>Si</option>
-                                <option>No</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">Indice Tabaquico</label>
-                            <select id="indice" class="form-control-custom" onchange="updateProfile()">
-                                <option value="">Seleccione</option>
-                                <option>< 10</option>
-                                <option>10 - 20</option>
-                                <option>21 - 40</option>
-                                <option>> 41</option>
-                            </select>
+                            <label class="form-label">Cigarros Diarios</label>
+                            <input type="number" id="cigarrosDiarios" class="form-control-custom" placeholder="Ej: 20" min="0" max="100" oninput="calcularIndiceTabaquico()">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Años de Consumo</label>
+                            <input type="number" id="anosConsumo" class="form-control-custom" placeholder="Ej: 10" min="0" max="100" oninput="calcularIndiceTabaquico()">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Alcohol</label>
                             <select id="alcohol" class="form-control-custom" onchange="updateProfile()">
-                                <option value="">Seleccione</option>
+                                <option selected>No</option>
                                 <option>Si</option>
-                                <option>No</option>
                             </select>
                         </div>
                     </div>
+                    <!-- Campo oculto para almacenar el resultado del índice tabáquico calculado -->
+                    <select id="indice" style="display: none;">
+                        <option value=""></option>
+                    </select>
                 </div>
 
                 <!-- Información Adicional -->
@@ -1035,7 +1035,7 @@
                             <label class="form-label">Comorbilidades</label>
                             <div class="radio-group">
                                 <div class="radio-item">
-                                    <input type="checkbox" id="ninguna" name="comorbilidades" value="Ninguna" class="option-check" onchange="handleComorbilidadesChange(this)">
+                                    <input type="checkbox" id="ninguna" name="comorbilidades" value="Ninguna" class="option-check" onchange="handleComorbilidadesChange(this)" checked>
                                     <label for="ninguna">Ninguna</label>
                                 </div>
                                 <div class="radio-item">
@@ -1055,9 +1055,8 @@
                     </div>
                     <div class="form-row full">
                         <div class="form-group">
-                            <label class="form-label">Antecedentes Ginecológicos</label>
-                            <select id="gineco" class="form-control-custom" onchange="updateProfile()">
-                                <option value="">Seleccione</option>
+                            <label class="form-label"> Antecedentes Ginecológicos</label>
+                            <select id="gineco" class="form-control-custom" onchange="setGinecoManualSelection(); updateProfile()">
                                 <option>Ninguno</option>
                                 <option>Premenopausica</option>
                                 <option>Menopausica</option>
@@ -1094,6 +1093,7 @@
                                 <option value="">Seleccione</option>
                                 <option>Si</option>
                                 <option>No</option>
+                                <option>No sé</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1102,6 +1102,7 @@
                                 <option value="">Seleccione</option>
                                 <option>Si</option>
                                 <option>No</option>
+                                <option>No sé</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1110,6 +1111,7 @@
                                 <option value="">Seleccione</option>
                                 <option>Si</option>
                                 <option>No</option>
+                                <option>No sé</option>
                             </select>
                         </div>
                     </div>
@@ -1138,7 +1140,7 @@
                     <div class="form-section-title">Estadía Tumoral (TNM)</div>
                     <div class="form-row three">
                         <div class="form-group">
-                            <label class="form-label">T - Num. Tumores</label>
+                            <label class="form-label">T - Tamaño del Tumor</label>
                             <select id="T" class="form-control-custom" onchange="updateProfile()">
                                 <option value="">Seleccione</option>
                                 <option value="Tis">Tis</option>
@@ -1179,21 +1181,21 @@
         </div>
     </div>
 
-    <!-- Modal Antecedentes Ginecoobstétricos -->
-    <div class="modal-overlay" id="modal-gineco">
+    <!-- Modal Inmunohistoquímica (IHC) -->
+    <div class="modal-overlay" id="modal-IHC">
         <div class="modal-box">
             <div class="modal-header">
                 <div class="modal-header-title">
                     <i class="fas fa-heartbeat"></i>
-                    Antec. Ginecoobstétricos
+                    Inmunohistoquímica (IHC) 
                 </div>
-                <button class="modal-close-btn" onclick="closeModal('gineco')">
+                <button class="modal-close-btn" onclick="closeModal('IHC')">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="modal-body">
                 <div class="form-section">
-                    <div class="form-section-title">Información Ginecoobstétrica</div>
+                    <div class="form-section-title">Inmunohistoquímica (IHC)</div>
                     <div class="form-row three">
                         <div class="form-group">
                             <label class="form-label">R. de Progesterona</label>
@@ -1235,7 +1237,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-guardar" onclick="guardarGineco()">Guardar</button>
+                <button class="btn-guardar" onclick="guardarIHC()">Guardar</button>
             </div>
         </div>
     </div>
@@ -1248,6 +1250,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     <script>
         const modalSnapshots = {};
+        let indiceTabaquicoCalculado = ''; // Variable para almacenar el índice calculado
 
         function getModalState(type) {
             const modal = document.getElementById(`modal-${type}`);
@@ -1260,6 +1263,11 @@
             let hasData = false;
 
             fields.forEach((field, index) => {
+                // Excluir el select oculto de índice
+                if (field.id === 'indice' && field.style.display === 'none') {
+                    return;
+                }
+                
                 const key = `${field.id || field.name || 'field'}_${index}`;
                 let value = '';
 
@@ -1277,6 +1285,12 @@
 
                 state[key] = value;
             });
+
+            // Incluir el índice tabáquico calculado en el estado
+            if (type === 'personal' && indiceTabaquicoCalculado) {
+                state['indiceCalculado'] = indiceTabaquicoCalculado;
+                hasData = true;
+            }
 
             return { data: JSON.stringify(state), hasData };
         }
@@ -1323,20 +1337,71 @@
             updateProfile();
         }
 
+        function setGinecoManualSelection() {
+            const GinecoSelect = document.getElementById('gineco');
+            if (GinecoSelect) {
+                GinecoSelect.dataset.userSelected = '1';
+            }
+        }
+
+        function calcularIndiceTabaquico() {
+            const cigarrosInput = document.getElementById('cigarrosDiarios').value;
+            const anosInput = document.getElementById('anosConsumo').value;
+            
+            // Si alguno está vacío, no hay suficiente información
+            if (cigarrosInput === '' || anosInput === '') {
+                indiceTabaquicoCalculado = '';
+                updateProfile();
+                return;
+            }
+            
+            const cigarros = Number(cigarrosInput);
+            const anos = Number(anosInput);
+            
+            const indiceCalculado = (cigarros * anos) / 20;
+            let rangoIndice = '';
+
+            if (indiceCalculado < 10) {
+                rangoIndice = '< 10';
+            } else if (indiceCalculado >= 10 && indiceCalculado <= 20) {
+                rangoIndice = '10 - 20';
+            } else if (indiceCalculado > 20 && indiceCalculado <= 40) {
+                rangoIndice = '21 - 40';
+            } else if (indiceCalculado > 40) {
+                rangoIndice = '> 41';
+            }
+
+            indiceTabaquicoCalculado = rangoIndice;
+            updateProfile();
+        }
+
         // Update Profile Display
         function updateProfile() {
             // Información Personal
             const edad = document.getElementById('edad').value;
             document.getElementById('display-edad').textContent = edad ? edad : 'Sin ingresar';
+            
+            // Validar edad máxima
+            if (edad && edad > 110) {
+                toastr.warning('La edad ingresada parece estar fuera de lo normal', 'Verificar Edad');
+            }
 
             const talla = document.getElementById('talla').value;
             document.getElementById('display-altura').textContent = talla ? `${talla} cm` : 'Sin ingresar';
+            
+            // Validar altura máxima
+            if (talla && talla > 230) {
+                toastr.warning('La altura ingresada parece estar fuera de lo normal', 'Verificar Altura');
+            }
 
             const sexo = document.getElementById('sexo').value;
             document.getElementById('display-sexo').textContent = sexo ? sexo : 'Sin ingresar';
 
             const peso = document.getElementById('peso').value;
             document.getElementById('display-peso').textContent = peso ? `${peso} kg` : 'Sin ingresar';
+            if(peso && peso > 250){
+                toastr.warning('El peso ingresado parece estar fuera de lo normal', 'Verificar Peso');
+            }
 
             // Información Consumo
             const drogas = document.getElementById('drogas').value;
@@ -1345,8 +1410,14 @@
             const alcohol = document.getElementById('alcohol').value;
             document.getElementById('display-alcohol').textContent = alcohol ? alcohol : 'Sin seleccionar';
 
-            const indice = document.getElementById('indice').value;
-            document.getElementById('display-indice').textContent = indice ? indice : 'Sin seleccionar';
+            const cigarros = document.getElementById('cigarrosDiarios').value;
+            const anos = document.getElementById('anosConsumo').value;
+            
+            let indiceDisplay = 'Sin calcular';
+            if (cigarros && anos) {
+                indiceDisplay = indiceTabaquicoCalculado || 'Sin calcular';
+            }
+            document.getElementById('display-indice').textContent = indiceDisplay;
 
             // Comorbilidades
             const comorbilidades = Array.from(
@@ -1356,8 +1427,19 @@
                 ? comorbilidades.join(', ')
                 : 'Sin seleccionar';
 
-            // Ginecológicos
-            const gineco = document.getElementById('gineco').value;
+            // Antecedentes Ginecológicos
+            const ginecoSelect = document.getElementById('gineco');
+            const edadNumero = Number(edad);
+            const tieneEdadValida = edad !== '' && Number.isFinite(edadNumero);
+            const ginecoDefault = tieneEdadValida
+                ? (edadNumero < 40 ? 'Premenopausica' : 'Menopausica')
+                : '';
+
+            if (ginecoSelect && ginecoDefault && !ginecoSelect.dataset.userSelected) {
+                ginecoSelect.value = ginecoDefault;
+            }
+
+            const gineco = ginecoSelect ? ginecoSelect.value : '';
             document.getElementById('display-ginecologicos').textContent = gineco ? gineco : 'Sin seleccionar';
 
             // Heredo familiales
@@ -1380,7 +1462,7 @@
             const N = document.getElementById('N').value;
             document.getElementById('display-N').textContent = N ? N : 'Sin ingresar';
 
-            // Ginecoobstétricos
+            // Inmunohistoquímica (IHC)
             const RP = document.getElementById('RP').value;
             document.getElementById('display-RP').textContent = RP ? RP : 'Sin seleccionar';
 
@@ -1420,8 +1502,8 @@
             guardarConValidacion('tumoral', 'Estadía tumoral guardada correctamente');
         }
 
-        function guardarGineco() {
-            guardarConValidacion('gineco', 'Antecedentes ginecoobstétricos guardados correctamente');
+        function guardarIHC() {
+            guardarConValidacion('IHC', 'Inmunohistoquímica (IHC)  guardados correctamente');
         }
 
         // Función enviar (Consultar)
@@ -1483,6 +1565,9 @@
                 content.classList.remove('active');
                 chevron.classList.remove('rotated');
             }
+
+            // Resetear índice tabáquico
+            indiceTabaquicoCalculado = '';
 
             toastr.info('Listo para nueva consulta', 'Reiniciado');
         }
@@ -1582,7 +1667,7 @@
     <!-- Toastr JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     <!-- Custom JS -->
-    <script src="js/entradas.js?v3"></script>
+    <script src="js/entradas.js?v4"></script>
 </body>
 
 </html>
