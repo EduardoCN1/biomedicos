@@ -118,6 +118,81 @@ function ginecoButton(){
 
 
 
+function renderTreatments(data, loadingContainer, treatmentsContainer, buttonsContainer) {
+    if (data && data.length > 0) {
+        loadingContainer.classList.remove('active');
+        treatmentsContainer.classList.add('active');
+
+        for (let j = 1; j <= 3; j++) {
+            const treatmentItem = document.getElementById(`treatment${j}`);
+            if (treatmentItem) {
+                treatmentItem.style.display = 'none';
+            }
+        }
+
+        for (let i = 0; i < Math.min(data.length, 3); i++) {
+            const treatmentNum = i + 1;
+            const treatmentData = data[i];
+
+            const treatmentItem = document.getElementById(`treatment${treatmentNum}`);
+            if (treatmentItem) {
+                treatmentItem.style.display = 'block';
+            }
+
+            const etapaElement = document.getElementById(`etapa${treatmentNum}`);
+            if (etapaElement && treatmentData.Stage) {
+                etapaElement.textContent = String(treatmentData.Stage);
+            }
+
+            const testSection = document.querySelector(`#treatment${treatmentNum} .treatment-section:nth-child(2) .treatment-section-content`);
+            if (testSection && treatmentData.RecommendedTests) {
+                testSection.innerHTML = '';
+                treatmentData.RecommendedTests.forEach(test => {
+                    const div = document.createElement('div');
+                    div.innerHTML = `<span class="treatment-item-label">${test}</span>`;
+                    testSection.appendChild(div);
+                });
+            }
+
+            const treatmentSection = document.querySelector(`#treatment${treatmentNum} .treatment-section:nth-child(3) .treatment-section-content`);
+            if (treatmentSection && treatmentData.TreatmentOptions) {
+                treatmentSection.innerHTML = '';
+                treatmentData.TreatmentOptions.forEach(treatment => {
+                    const div = document.createElement('div');
+                    div.innerHTML = `<span class="treatment-item-label">${treatment}</span>`;
+                    treatmentSection.appendChild(div);
+                });
+            }
+        }
+
+        toastr.success('Tratamientos validados correctamente', 'Éxito');
+    } else {
+        loadingContainer.classList.remove('active');
+        buttonsContainer.classList.remove('hidden');
+        toastr.error('No se encontraron tratamientos para estos parámetros', 'Error');
+    }
+}
+
+function consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer) {
+    const fallbackUrl = `http://127.0.0.1:5000/get_stage_info?t_label=${T}&n_label=${N}&m_label=${M}`;
+
+    $.ajax({
+        type: "GET",
+        url: fallbackUrl,
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        success: function (data) {
+            renderTreatments(data, loadingContainer, treatmentsContainer, buttonsContainer);
+            toastr.info('Se usó flujo directo (sin validación ML)', 'Modo degradado');
+        },
+        error: function () {
+            loadingContainer.classList.remove('active');
+            buttonsContainer.classList.remove('hidden');
+            toastr.error('Error al consultar tratamientos. Verifica servicios activos.', 'Error');
+        }
+    });
+}
+
 function enviar(){
     var edad= $("#edad").val(); 
     var sexo= $("#sexo").val();
@@ -172,83 +247,73 @@ function enviar(){
     buttonsContainer.classList.add('hidden');
     loadingContainer.classList.add('active');
     
-    // usar la API local por defecto
-    const url= "http://127.0.0.1:5000/get_stage_info?t_label=" + T + "&n_label=" + N + "&m_label=" + M;  
-    console.log(T, N, M);
-    
+    const submitUrl = "http://127.0.0.1:5000/pipeline/submit";
+    const payload = {
+        t_label: T,
+        n_label: N,
+        m_label: M,
+        context: {
+            edad: edad,
+            sexo: sexo,
+            peso: peso,
+            talla: talla,
+            RP: RP,
+            RE: RE,
+            HER2: HER2,
+            Grade: Grade
+        }
+    };
+
     $.ajax({
-        type: "GET",
-        url: url,
+        type: "POST",
+        url: submitUrl,
         contentType: "application/json; charset=utf-8",
         dataType: "json",
-        success: function (data) {
-            console.log("Respuesta del servidor:", data);
-
-            if (data && data.length > 0) {
-                // Ocultar loading, mostrar tratamientos
-                loadingContainer.classList.remove('active');
-                treatmentsContainer.classList.add('active');
-                
-                // Primero, ocultar todos los tratamientos
-                for (let j = 1; j <= 3; j++) {
-                    const treatmentItem = document.getElementById(`treatment${j}`);
-                    if (treatmentItem) {
-                        treatmentItem.style.display = 'none';
-                    }
-                }
-                
-                // Poblar los tratamientos con datos reales
-                for (let i = 0; i < Math.min(data.length, 3); i++) {
-                    const treatmentNum = i + 1;
-                    const treatmentData = data[i];
-                    
-                    // Mostrar el tratamiento
-                    const treatmentItem = document.getElementById(`treatment${treatmentNum}`);
-                    if (treatmentItem) {
-                        treatmentItem.style.display = 'block';
-                    }
-                    
-                    // Actualizar etapa
-                    const etapaElement = document.getElementById(`etapa${treatmentNum}`);
-                    if (etapaElement && treatmentData.Stage && treatmentData.Stage.length > 0) {
-                        etapaElement.textContent = treatmentData.Stage[0];
-                    }
-                    
-                    // Actualizar tests recomendados
-                    const testSection = document.querySelector(`#treatment${treatmentNum} .treatment-section:nth-child(2) .treatment-section-content`);
-                    if (testSection && treatmentData.RecommendedTests) {
-                        testSection.innerHTML = '';
-                        treatmentData.RecommendedTests.forEach(test => {
-                            const div = document.createElement('div');
-                            div.innerHTML = `<span class="treatment-item-label">${test}</span>`;
-                            testSection.appendChild(div);
-                        });
-                    }
-                    
-                    // Actualizar opciones de tratamiento
-                    const treatmentSection = document.querySelector(`#treatment${treatmentNum} .treatment-section:nth-child(3) .treatment-section-content`);
-                    if (treatmentSection && treatmentData.TreatmentOptions) {
-                        treatmentSection.innerHTML = '';
-                        treatmentData.TreatmentOptions.forEach(treatment => {
-                            const div = document.createElement('div');
-                            div.innerHTML = `<span class="treatment-item-label">${treatment}</span>`;
-                            treatmentSection.appendChild(div);
-                        });
-                    }
-                }
-                
-                toastr.success('Tratamientos generados correctamente', 'Éxito');
-            } else {
-                loadingContainer.classList.remove('active');
-                buttonsContainer.classList.remove('hidden');
-                toastr.error('No se encontraron tratamientos para estos parámetros', 'Error');
+        data: JSON.stringify(payload),
+        success: function (submitResp) {
+            const jobId = submitResp.job_id;
+            if (!jobId) {
+                consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+                return;
             }
+
+            let attempts = 0;
+            const maxAttempts = 30;
+            const pollIntervalMs = 2000;
+
+            const poller = setInterval(() => {
+                attempts += 1;
+                $.ajax({
+                    type: "GET",
+                    url: `http://127.0.0.1:5000/pipeline/result/${jobId}`,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (resultResp) {
+                        const status = resultResp.status;
+
+                        if (status === 'completed' && resultResp.result) {
+                            clearInterval(poller);
+                            const validated = resultResp.result.final_recommendations || [];
+                            renderTreatments(validated, loadingContainer, treatmentsContainer, buttonsContainer);
+                        } else if (status === 'failed') {
+                            clearInterval(poller);
+                            consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+                        } else if (attempts >= maxAttempts) {
+                            clearInterval(poller);
+                            consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+                        }
+                    },
+                    error: function () {
+                        if (attempts >= maxAttempts) {
+                            clearInterval(poller);
+                            consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+                        }
+                    }
+                });
+            }, pollIntervalMs);
         },
-        error: function (error) {
-            console.error("Error al consultar:", error);
-            loadingContainer.classList.remove('active');
-            buttonsContainer.classList.remove('hidden');
-            toastr.error('Error al consultar tratamientos. Verifica que el servidor esté corriendo.', 'Error');
+        error: function () {
+            consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
         }
     });
 }
