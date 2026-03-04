@@ -1,0 +1,121 @@
+<!-- Modal Antecedentes Personales -->
+<div class="modal-overlay" id="modal-personal">
+    <div class="modal-box modal-box-wide">
+        <div class="modal-header">
+            <div class="modal-header-title">
+                <i class="fas fa-user"></i>
+                Antecedentes Personales
+            </div>
+            <button class="modal-close-btn" onclick="closeModal('personal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body columns-3">
+            <!-- Información Personal -->
+            <div class="form-section">
+                <div class="form-section-title">Información Personal</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Edad</label>
+                        <input type="number" id="edad" class="form-control-custom" placeholder="Ingrese edad" min="0" max="120" oninput="updateProfile()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Altura cm</label>
+                        <input type="number" id="talla" class="form-control-custom" placeholder="Ingrese Altura" min="100" max="250" oninput="updateProfile()">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Sexo</label>
+                        <select id="sexo" class="form-control-custom" onchange="updateProfile()">
+                              <option selected>Femenino</option>
+                              <option>Masculino</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Peso Kg</label>
+                        <input type="number" id="peso" class="form-control-custom" placeholder="Ingrese Peso" min="30" max="200" oninput="updateProfile()">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Información Consumo -->
+            <div class="form-section">
+                <div class="form-section-title">Información Consumo</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Drogas</label>
+                        <select id="drogas" class="form-control-custom" onchange="updateProfile()">
+                            <option selected>No</option>
+                            <option>Si</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Cigarros Diarios</label>
+                        <input type="number" id="cigarrosDiarios" class="form-control-custom" placeholder="Ej: 20" min="0" max="100" oninput="calcularIndiceTabaquico()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Años de Consumo</label>
+                        <input type="number" id="anosConsumo" class="form-control-custom" placeholder="Ej: 10" min="0" max="100" oninput="calcularIndiceTabaquico()">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Alcohol</label>
+                        <select id="alcohol" class="form-control-custom" onchange="updateProfile()">
+                            <option selected>No</option>
+                            <option>Si</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Campo oculto para almacenar el resultado del índice tabáquico calculado -->
+                <select id="indice" style="display: none;">
+                    <option value=""></option>
+                </select>
+            </div>
+
+            <!-- Información Adicional -->
+            <div class="form-section">
+                <div class="form-section-title">Información Adicional</div>
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label class="form-label">Comorbilidades</label>
+                        <div class="radio-group">
+                            <div class="radio-item">
+                                <input type="checkbox" id="ninguna" name="comorbilidades" value="Ninguna" class="option-check" onchange="handleComorbilidadesChange(this)" checked>
+                                <label for="ninguna">Ninguna</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="checkbox" id="diabetes" name="comorbilidades" value="Diabetes" class="option-check" onchange="handleComorbilidadesChange(this)">
+                                <label for="diabetes">Diabetes</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="checkbox" id="hipertension" name="comorbilidades" value="Hipertensión" class="option-check" onchange="handleComorbilidadesChange(this)">
+                                <label for="hipertension">Hipertensión</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="checkbox" id="vih" name="comorbilidades" value="VIH" class="option-check" onchange="handleComorbilidadesChange(this)">
+                                <label for="vih">VIH</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label class="form-label"> Antecedentes Ginecológicos</label>
+                        <select id="gineco" class="form-control-custom" onchange="setGinecoManualSelection(); updateProfile()">
+                            <option>Ninguno</option>
+                            <option>Premenopausica</option>
+                            <option>Menopausica</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-guardar" onclick="guardarPersonales()">Guardar</button>
+        </div>
+    </div>
+</div>

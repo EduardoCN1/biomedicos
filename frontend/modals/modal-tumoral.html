@@ -1,0 +1,57 @@
+<!-- Modal Estadía Tumoral -->
+<div class="modal-overlay" id="modal-tumoral">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-header-title">
+                <i class="fas fa-stethoscope"></i>
+                Estadía Tumoral
+            </div>
+            <button class="modal-close-btn" onclick="closeModal('tumoral')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-section">
+                <div class="form-section-title">Estadía Tumoral (TNM)</div>
+                <div class="form-row three">
+                    <div class="form-group">
+                        <label class="form-label">T - Tamaño del Tumor</label>
+                        <select id="T" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option value="Tis">Tis</option>
+                            <option value="T0">T0</option>
+                            <option value="T1">T1</option>
+                            <option value="T2">T2</option>
+                            <option value="T3">T3</option>
+                            <option value="T4">T4</option>
+                            <option value="Tx">Tx</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">N - Nód. Linfáticos</label>
+                        <select id="N" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option value="N0">N0</option>
+                            <option value="N1">N1</option>
+                            <option value="N2">N2</option>
+                            <option value="N3">N3</option>
+                            <option value="N4">N4</option>
+                            <option value="Nx">Nx</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">M - Metástasis</label>
+                        <select id="M" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option value="M0">M0 (Sin metástasis)</option>
+                            <option value="M1">M1 (Con metástasis)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-guardar" onclick="guardarTumoral()">Guardar</button>
+        </div>
+    </div>
+</div>

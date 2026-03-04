@@ -1,0 +1,51 @@
+<!-- Modal Antecedentes Heredofamiliares -->
+<div class="modal-overlay" id="modal-heredofamiliar">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-header-title">
+                <i class="fas fa-users"></i>
+                Antecedentes Heredofamiliares
+            </div>
+            <button class="modal-close-btn" onclick="closeModal('heredofamiliar')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-section">
+                <div class="form-section-title">Cancer en Línea de Parentesco</div>
+                <div class="form-row three">
+                    <div class="form-group">
+                        <label class="form-label">Familiar Ascendiente</label>
+                        <select id="ascendente" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option>Si</option>
+                            <option>No</option>
+                            <option>No sé</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Familiar Descendiente</label>
+                        <select id="descendente" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option>Si</option>
+                            <option>No</option>
+                            <option>No sé</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Familiar Lateral</label>
+                        <select id="lateral" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option>Si</option>
+                            <option>No</option>
+                            <option>No sé</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-guardar" onclick="guardarHeredofamiliar()">Guardar</button>
+        </div>
+    </div>
+</div>

@@ -23,9 +23,20 @@ biomedicos/
 │   ├── run_waitress.py
 │   └── __init__.py
 ├── frontend/                # HTML + JavaScript + CSS
-│   ├── index.html
-│   ├── js/entradas.js
-│   └── css/stilous.css
+│   ├── index.html           # Página principal (reestructurada v2.2)
+│   ├── css/
+│   │   ├── stilous.css      # Estilos globales
+│   │   ├── stilous.scss     # Fuente SCSS
+│   │   └── index-custom.css # Estilos específicos del index
+│   ├── js/
+│   │   ├── config.js        # Configuración
+│   │   ├── entradas.js      # Lógica de negocio
+│   │   └── main.js          # Funciones principales UI
+│   └── modals/              # Modales independientes (v2.2)
+│       ├── modal-personal.html
+│       ├── modal-heredofamiliar.html
+│       ├── modal-tumoral.html
+│       └── modal-ihc.html
 ├── data/                    # Datos y backups
 │   ├── nodos.csv
 │   ├── relaciones.csv
@@ -39,11 +50,20 @@ biomedicos/
 ├── docs/                    # Documentación
 │   ├── ARCHITECTURE.md
 │   ├── API.md
-│   └── SETUP.md
+│   ├── SETUP.md
+│   └── REESTRUCTURACION_FRONTEND.md  #  Nueva (v2.2)
 ├── .env.example
 ├── requirements.txt
 └── README.md
 ```
+
+###  Novedades v2.2 (Marzo 2026)
+- **Reestructuración Frontend**: CSS, JS y modales en archivos separados
+- **Interfaz Mejorada**: Diseño moderno con animaciones y validaciones
+- **Modales Dinámicos**: Carga on-demand de formularios
+- **Better UX**: Spinner de carga, notificaciones, perfil en tiempo real
+
+Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detalles completos.
 
 ## Inicio Rápido
 
@@ -158,6 +178,7 @@ biomedicos/
   - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Problemas avanzados y soluciones
   - **[DIAGRAMAS.md](docs/DIAGRAMAS.md)** - Diagramas Mermaid de arquitectura
   - **[ESTADO_FINAL.md](docs/ESTADO_FINAL.md)** - Resumen de reorganización completada
+  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - ✨ Mejoras UI/UX v2.2 (Marzo 2026)
 
 ## Endpoints Disponibles
 
@@ -316,5 +337,5 @@ biomedicos/
 Proyecto de práctica sobre arquitectura de software biomedico.
 
 ---
-**Última actualización:** 2026-02-13
-**Versión:** 2.0 (Reorganizado a estructura profesional)
+**Última actualización:** 2026-03-04
+**Versión:** 2.2 (Reestructuración Frontend + Mejoras UI/UX)

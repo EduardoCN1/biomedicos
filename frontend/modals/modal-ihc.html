@@ -1,0 +1,60 @@
+<!-- Modal Inmunohistoquímica (IHC) -->
+<div class="modal-overlay" id="modal-IHC">
+    <div class="modal-box">
+        <div class="modal-header">
+            <div class="modal-header-title">
+                <i class="fas fa-heartbeat"></i>
+                Inmunohistoquímica (IHC) 
+            </div>
+            <button class="modal-close-btn" onclick="closeModal('IHC')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-section">
+                <div class="form-section-title">Inmunohistoquímica (IHC)</div>
+                <div class="form-row three">
+                    <div class="form-group">
+                        <label class="form-label">R. de Progesterona</label>
+                        <select id="RP" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option>Positivo</option>
+                            <option>Negativo</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">R. de Estrógeno</label>
+                        <select id="RE" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option>Positivo</option>
+                            <option>Negativo</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Grado Histológico</label>
+                        <select id="Grade" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option>I</option>
+                            <option>II</option>
+                            <option>III</option>
+                            <option>IV</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">HER2</label>
+                        <select id="HER2" class="form-control-custom" onchange="updateProfile()">
+                            <option value="">Seleccione</option>
+                            <option>Positivo</option>
+                            <option>Negativo</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-guardar" onclick="guardarIHC()">Guardar</button>
+        </div>
+    </div>
+</div>
