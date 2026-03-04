@@ -12,7 +12,7 @@ $TNM_DATA = @{
 } | ConvertTo-Json
 
 Write-Host "════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "🧪 PRUEBA DE ARQUITECTURA TNM → RECOMENDADOR → VALIDADOR" -ForegroundColor Cyan
+Write-Host " PRUEBA DE ARQUITECTURA TNM → RECOMENDADOR → VALIDADOR" -ForegroundColor Cyan
 Write-Host "════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 

@@ -776,5 +776,5 @@ R: Ejecutar N instancias del Recommender y ML Validator. RabbitMQ distribuye aut
 
 ---
 
-**Última contribución:** GitHub Copilot  
+**Última contribución:** Eduardo Fco. Cortés Navarro
 **Preguntas?** Revisa los logs con `docker compose logs -f`
