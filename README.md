@@ -179,6 +179,23 @@ Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detal
   - **[DIAGRAMAS.md](docs/DIAGRAMAS.md)** - Diagramas Mermaid de arquitectura
   - **[ESTADO_FINAL.md](docs/ESTADO_FINAL.md)** - Resumen de reorganización completada
   - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - ✨ Mejoras UI/UX v2.2 (Marzo 2026)
+  - **[MICROSERVICIOS_MENSAJERIA.md](docs/MICROSERVICIOS_MENSAJERIA.md)** - ✨ Flujo TNM → Recomendación → Validación ML por colas
+
+## Microservicios con Mensajería (MVP)
+
+El proyecto incluye un pipeline asíncrono con RabbitMQ:
+- API Gateway (`/pipeline/submit` y `/pipeline/result/<job_id>`)
+- Recommender Service (consulta Neo4j)
+- ML Validator Service (mock reemplazable por modelo real)
+
+### Levantar todo con Docker
+```powershell
+docker compose up --build
+```
+
+Servicios:
+- API: `http://localhost:5000`
+- RabbitMQ UI: `http://localhost:15672` (guest/guest)
 
 ## Endpoints Disponibles
 
