@@ -218,6 +218,10 @@ function updateProfile() {
     const N = document.getElementById('N').value;
     document.getElementById('display-N').textContent = N ? N : 'Sin ingresar';
 
+    const surgeryPreferenceSelect = document.getElementById('surgeryPreference');
+    const surgeryPreference = surgeryPreferenceSelect ? surgeryPreferenceSelect.value : '';
+    document.getElementById('display-surgery-preference').textContent = surgeryPreference ? surgeryPreference : 'Sin ingresar';
+
     // Inmunohistoquímica (IHC)
     const RP = document.getElementById('RP').value;
     document.getElementById('display-RP').textContent = RP ? RP : 'Sin seleccionar';

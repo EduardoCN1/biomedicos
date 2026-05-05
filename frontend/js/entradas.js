@@ -25,10 +25,11 @@ function heredo(ascendente, lateral, descendente){
     this.descendente=descendente;
 }
 
-function estadia(T, N, M){
+function estadia(T, N, M, P){
     this.T=T;
     this.N=N;
     this.M=M;
+    this.P=P;
 }
 
 function antecede(RP, RE, HER2, Grade){
@@ -43,6 +44,41 @@ function biomedicos(personal, heredof, estadiat, anteceden){
     this.heredof=heredof;
     this.estadiat=estadiat;
     this.anteceden=anteceden;
+}
+
+const SURGICAL_TREATMENT_NAMES = new Set([
+    'surgery',
+    'lumpectomy',
+    'mastectomy'
+]);
+
+function normalizeText(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function isNoSurgeryPreference(preference) {
+    const normalized = normalizeText(preference);
+    return normalized === 'no';
+}
+
+function isSurgicalTreatment(treatmentName) {
+    return SURGICAL_TREATMENT_NAMES.has(normalizeText(treatmentName));
+}
+
+function filterRecommendationsBySurgeryPreference(recommendations, surgeryPreference) {
+    if (!isNoSurgeryPreference(surgeryPreference)) {
+        return recommendations || [];
+    }
+
+    return (recommendations || [])
+        .map(item => {
+            const filteredTreatments = (item.TreatmentOptions || []).filter(option => !isSurgicalTreatment(option));
+            return {
+                ...item,
+                TreatmentOptions: filteredTreatments
+            };
+        })
+        .filter(item => item.TreatmentOptions && item.TreatmentOptions.length > 0);
 }
 
 function personalButton(){
@@ -95,6 +131,7 @@ function estadiaButton(){
     var T= $("#T").val(); 
     var N= $("#N").val(); 
     var M= $("#M").val(); 
+    var P= $("#surgeryPreference").val();
 
     if(T!== "" && N!== "" && M !== ""){
         let tumoralInfoTexto = "T: " + T + ", N: " + N + ", M: " + M;
@@ -173,7 +210,7 @@ function renderTreatments(data, loadingContainer, treatmentsContainer, buttonsCo
     }
 }
 
-function consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer) {
+function consultarStageInfoDirecto(T, N, M, surgeryPreference, loadingContainer, treatmentsContainer, buttonsContainer) {
     const fallbackUrl = `http://127.0.0.1:5000/get_stage_info?t_label=${T}&n_label=${N}&m_label=${M}`;
 
     $.ajax({
@@ -182,7 +219,8 @@ function consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContaine
         contentType: "application/json; charset=utf-8",
         dataType: "json",
         success: function (data) {
-            renderTreatments(data, loadingContainer, treatmentsContainer, buttonsContainer);
+            const filtered = filterRecommendationsBySurgeryPreference(data, surgeryPreference);
+            renderTreatments(filtered, loadingContainer, treatmentsContainer, buttonsContainer);
             toastr.info('Se usó flujo directo (sin validación ML)', 'Modo degradado');
         },
         error: function () {
@@ -197,7 +235,7 @@ function enviar(){
     var edad= $("#edad").val(); 
     var sexo= $("#sexo").val();
     var talla= $("#talla").val();
-    var preferencia= $("#Preferencia").val();
+    var preferencia= $("#surgeryPreference").val();
     var peso= $("#peso").val();
     var gineco= $("#gineco").val();
     var indice= $("#indice").val();
@@ -260,7 +298,8 @@ function enviar(){
             RP: RP,
             RE: RE,
             HER2: HER2,
-            Grade: Grade
+            Grade: Grade,
+            surgery_preference: preferencia
         }
     };
 
@@ -273,7 +312,7 @@ function enviar(){
         success: function (submitResp) {
             const jobId = submitResp.job_id;
             if (!jobId) {
-                consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+                consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
                 return;
             }
 
@@ -294,26 +333,27 @@ function enviar(){
                         if (status === 'completed' && resultResp.result) {
                             clearInterval(poller);
                             const validated = resultResp.result.final_recommendations || [];
-                            renderTreatments(validated, loadingContainer, treatmentsContainer, buttonsContainer);
+                            const filtered = filterRecommendationsBySurgeryPreference(validated, preferencia);
+                            renderTreatments(filtered, loadingContainer, treatmentsContainer, buttonsContainer);
                         } else if (status === 'failed') {
                             clearInterval(poller);
-                            consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+                            consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
                         } else if (attempts >= maxAttempts) {
                             clearInterval(poller);
-                            consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+                            consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
                         }
                     },
                     error: function () {
                         if (attempts >= maxAttempts) {
                             clearInterval(poller);
-                            consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+                            consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
                         }
                     }
                 });
             }, pollIntervalMs);
         },
         error: function () {
-            consultarStageInfoDirecto(T, N, M, loadingContainer, treatmentsContainer, buttonsContainer);
+            consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
         }
     });
 }

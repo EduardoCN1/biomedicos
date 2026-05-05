@@ -15,6 +15,46 @@ from backend.config import (
 )
 
 
+SURGICAL_TREATMENT_NAMES = {"surgery", "lumpectomy", "mastectomy"}
+
+
+def normalize_text(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def is_no_surgery_preference(value: Any) -> bool:
+    return normalize_text(value) == "no"
+
+
+def is_surgical_treatment(value: Any) -> bool:
+    return normalize_text(value) in SURGICAL_TREATMENT_NAMES
+
+
+def filter_recommendations_by_surgery_preference(
+    recommendations: List[Dict[str, Any]], surgery_preference: Any
+) -> List[Dict[str, Any]]:
+    if not is_no_surgery_preference(surgery_preference):
+        return recommendations or []
+
+    filtered: List[Dict[str, Any]] = []
+    for item in recommendations or []:
+        treatment_options = item.get("TreatmentOptions", [])
+        non_surgical = [option for option in treatment_options if not is_surgical_treatment(option)]
+
+        if not non_surgical:
+            continue
+
+        filtered.append(
+            {
+                "Stage": item.get("Stage"),
+                "RecommendedTests": item.get("RecommendedTests", []),
+                "TreatmentOptions": non_surgical,
+            }
+        )
+
+    return filtered
+
+
 class Neo4JDatabase:
     def __init__(self, uri: str, user: str, password: str):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -91,12 +131,18 @@ def run() -> None:
                         raise ValueError("Mensaje inválido: faltan job_id o TNM")
 
                     recommendations = db.get_stage_treatment_and_tests(t_label, n_label, m_label)
+                    context = payload.get("context", {})
+                    surgery_preference = context.get("surgery_preference")
+                    recommendations = filter_recommendations_by_surgery_preference(
+                        recommendations,
+                        surgery_preference,
+                    )
 
                     validation_payload = {
                         "job_id": job_id,
                         "tnm": tnm,
                         "recommendations": recommendations,
-                        "context": payload.get("context", {}),
+                        "context": context,
                         "timestamp": int(time.time()),
                     }
 
