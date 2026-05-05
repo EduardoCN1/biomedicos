@@ -2,12 +2,16 @@
 
 ## Visión General
 
-El proyecto utiliza una **arquitectura de microservicios desacoplados** que se comunican a través de **RabbitMQ**, un message broker confiable y escalable. Esto permite:
+El proyecto utiliza una **arquitectura de microservicios desacoplados** que se comunican a través de **RabbitMQ**, un message broker confiable y escalable. En lugar de procesar todo en un único script, el trabajo se divide en servicios independientes que se comunican a través de colas de mensajes.
 
--  **Escalabilidad**: Cada servicio puede escalar independientemente
--  **Resiliencia**: Si un servicio falla, otros continúan funcionando
--  **Asincronía**: Los servicios procesan en paralelo sin bloqueos
--  **Mantenibilidad**: Código modular y especializado por dominio
+### Beneficios de la Arquitectura de Microservicios
+
+- **Escalabilidad:** Cada servicio puede crecer independientemente sin afectar a otros
+- **Resiliencia:** Si un servicio falla, otros continúan funcionando correctamente
+- **Asincronía:** Los servicios procesan en paralelo sin bloqueos de espera
+- **Mantenibilidad:** Código modular y especializado por dominio
+- **Flexibilidad:** Fácil agregar, modificar o remover servicios sin impactar el sistema completo
+- **Independencia:** Cada servicio puede usar sus propias tecnologías y bases de datos
 
 ## Topología de Servicios
 
@@ -16,23 +20,23 @@ El proyecto utiliza una **arquitectura de microservicios desacoplados** que se c
                     │        Frontend (puerto 5500)                │
                     │      HTML + JavaScript + CSS                │
                     └────────────────┬─────────────────────────────┘
-                                     │ HTTP REST
+                                     │ HTTP REST POST /pipeline/submit
                                      ▼
                     ┌──────────────────────────────────────────────┐
                     │    API Principal - biomedicos-api             │
                     │         (puerto 5000)                        │
-                    │   • Endpoints REST/AJAX                      │
-                    │   • Lógica de orquestación                   │
-                    │   • Conexión a Neo4j                         │
-                    │   • Publicación de eventos                   │
+                    │   • POST /pipeline/submit                    │
+                    │   • GET /pipeline/result/<job_id>            │
+                    │   • GET /pipeline/health                     │
+                    │   • Orquestación de eventos                  │
                     └────────────────┬─────────────────────────────┘
                                      │
                      ┌───────────────┴───────────────┐
                      │   RabbitMQ (puerto 5672)      │
                      │   Message Broker              │
-                     │   • Colas FIFO                │
-                     │   • Pub/Sub topics            │
-                     │   • Dead-letter exchanges     │
+                     │   • tnm.recommendation.request│
+                     │   • tnm.validation.request    │
+                     │   • tnm.validation.result     │
                      │   • Admin (puerto 15672)      │
                      └──────┬──────────────────┬─────┘
                             │                  │
@@ -40,9 +44,9 @@ El proyecto utiliza una **arquitectura de microservicios desacoplados** que se c
                  │  Recommender    │  │  ML Validator    │
                  │  (puerto 5001)  │  │  (puerto 5002)   │
                  │                 │  │                  │
-                 │ • Modelos ML    │  │ • Validación de  │
-                 │ • Recomend.     │  │   patrones       │
-                 │ • KNN, etc      │  │ • Reglas oncol.  │
+                 │ • Consulta Neo4j│  │ • Valida         │
+                 │ • Genera ttos   │  │   recomendaciones│
+                 │ • ML models     │  │ • Filtra riesgos │
                  └────────────────┘  └──────────────────┘
                          │                    │
                          └────────┬───────────┘
@@ -55,6 +59,305 @@ El proyecto utiliza una **arquitectura de microservicios desacoplados** que se c
                     │   • Consultas Cypher         │
                     └─────────────────────────────┘
 ```
+
+## Componentes Técnicos
+
+### Docker y Docker Compose
+
+**¿Qué es Docker?**
+
+Docker es un sistema de contenedores que empaqueta una aplicación con todas sus dependencias en una "máquina virtual ligera". Esto garantiza que funcione identicamente en Windows, Mac y Linux.
+
+**¿Qué es Docker Compose?**
+
+Docker Compose es una herramienta que orquesta múltiples contenedores. El archivo `docker-compose.yml` define:
+- Qué imágenes usar
+- Puertos a exponer
+- Variables de entorno
+- Dependencias entre servicios
+- Volúmenes de almacenamiento
+
+**Estructura del docker-compose.yml:**
+
+```yaml
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"      # Puerto AMQP (comunicación entre servicios)
+      - "15672:15672"    # Puerto Web (panel de administración)
+    
+  neo4j:
+    image: neo4j:latest
+    ports:
+      - "7474:7474"      # Puerto HTTP (interfaz web)
+      - "7687:7687"      # Puerto Bolt (protocolo binario)
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    
+  api:
+    build: .             # Construye desde Dockerfile
+    ports:
+      - "5000:5000"
+    depends_on:
+      - rabbitmq
+      - neo4j
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - NEO4J_URI=neo4j://neo4j:7687
+    
+  recommender:
+    build: .
+    command: python services/recommender_service.py
+    depends_on:
+      - rabbitmq
+      - neo4j
+    
+  ml-validator:
+    build: .
+    command: python services/ml_validator_service.py
+    depends_on:
+      - rabbitmq
+```
+
+**Red Interna de Docker:**
+
+Docker crea una red interna donde los servicios pueden comunicarse usando sus nombres:
+- `rabbitmq:5672` → Resuelve automáticamente a la IP del contenedor RabbitMQ
+- `neo4j:7687` → Resuelve automáticamente a la IP del contenedor Neo4j
+
+### RabbitMQ - Message Broker
+
+**¿Qué es RabbitMQ?**
+
+RabbitMQ es un sistema de colas (queues) que almacena y distribuye mensajes entre productores y consumidores. Funciona de forma asincrónica: no requiere que el consumidor esté disponible en el momento de la publicación.
+
+**Modelo de Comunicación:**
+
+```
+Productor (publica)
+         ↓
+   [COLA]  (almacena mensajes)
+         ↓
+Consumidor (consume)
+```
+
+**Ventajas:**
+- Desacoplamiento: El productor no conoce al consumidor
+- Confiabilidad: Los mensajes se guardan si el consumidor falla
+- Escalabilidad: Múltiples consumidores pueden procesar mensajes en paralelo
+
+### Neo4j - Base de Datos de Grafos
+
+**¿Qué es Neo4j?**
+
+Neo4j es una base de datos especializada en almacenar y consultar grafos (nodos conectados por relaciones). Es perfecta para datos médicos donde hay muchas relaciones complejas.
+
+**Nuestro Modelo TNM:**
+
+```
+T_Stage_Finding (T1, T2, T3...)
+        │
+        └─[Has_Stage]──> Stage (IIIA, IIIB...)
+                              │
+                              ├─[Has_Treatment_Option] → Treatment
+                              └─[Has_Recommended_Test] → Test
+
+N_Stage_Finding (N0, N1, N2...)
+        │
+        └─[Has_Stage]──> Stage (mismos nodos)
+
+M_Stage_Finding (M0, M1...)
+        │
+        └─[Has_Stage]──> Stage (mismos nodos)
+```
+
+**Ejemplo de Consulta Cypher:**
+
+```cypher
+MATCH (t:T_Stage_Finding {label: "T1"}),
+      (n:N_Stage_Finding {label: "N0"}),
+      (m:M_Stage_Finding {label: "M0"})
+MATCH (t)-[:Has_Stage]->(stage),
+      (n)-[:Has_Stage]->(stage),
+      (m)-[:Has_Stage]->(stage)
+MATCH (stage)-[:Has_Treatment_Option]->(treatment),
+      (stage)-[:Has_Recommended_Test]->(test)
+RETURN stage.label, treatment.label, test.label
+```
+
+### Servicios Python
+
+#### **backend/api.py - API Gateway**
+
+**Responsabilidades:**
+1. Recibir solicitudes HTTP del frontend
+2. Validar datos TNM
+3. Publicar mensajes en RabbitMQ (cola: `tnm.recommendation.request`)
+4. Escuchar respuestas en RabbitMQ (cola: `tnm.validation.result`)
+5. Mantener estado de trabajos (jobs)
+6. Retornar resultados a través de polling
+
+**Endpoints:**
+
+| Método | Ruta | Parámetros | Descripción |
+|--------|------|-----------|-------------|
+| POST | `/pipeline/submit` | `{"tnm": {"t_label": "T1", "n_label": "N0", "m_label": "M0"}}` | Inicia procesamiento asincrónico, retorna `job_id` |
+| GET | `/pipeline/result/<job_id>` | `job_id` (path parameter) | Obtiene resultado cuando esté listo |
+| GET | `/pipeline/health` | - | Verifica estado del pipeline (RabbitMQ, consumidores) |
+
+**Ejemplo de Solicitud:**
+
+```bash
+curl -X POST http://localhost:5000/pipeline/submit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tnm": {
+      "t_label": "T1",
+      "n_label": "N0",
+      "m_label": "M0"
+    }
+  }'
+```
+
+**Respuesta (HTTP 202 Accepted):**
+
+```json
+{
+  "job_id": "620d271b-30ea-4e8e-aad9-35457dba1df0",
+  "status": "processing"
+}
+```
+
+**Polling para Obtener Resultado:**
+
+```bash
+curl http://localhost:5000/pipeline/result/620d271b-30ea-4e8e-aad9-35457dba1df0
+```
+
+**Respuesta cuando está listo (HTTP 200):**
+
+```json
+{
+  "job_id": "620d271b-30ea-4e8e-aad9-35457dba1df0",
+  "status": "completed",
+  "result": {
+    "stage": "IA",
+    "recommendations": ["Surgery", "Hormone Therapy"],
+    "tests": ["IHC", "ER/PR"]
+  }
+}
+```
+
+#### **services/recommender_service.py - Servicio Recomendador**
+
+**Responsabilidades:**
+
+1. Conectarse a RabbitMQ y escuchar la cola `tnm.recommendation.request`
+2. Para cada mensaje recibido:
+   - Extraer el `job_id` y valores TNM
+   - Conectar a Neo4j
+   - Ejecutar consulta Cypher para obtener opciones de tratamiento
+   - Publicar resultados en la cola `tnm.validation.request`
+
+**Pseudocódigo:**
+
+```python
+while True:
+    mensaje = canal_rabbitmq.consumir("tnm.recommendation.request")
+    
+    job_id = mensaje["job_id"]
+    t_label = mensaje["tnm"]["t_label"]
+    n_label = mensaje["tnm"]["n_label"]
+    m_label = mensaje["tnm"]["m_label"]
+    
+    # Conectar a Neo4j y ejecutar consulta
+    neo4j = Neo4JDatabase()
+    resultados = neo4j.obtener_recomendaciones(t_label, n_label, m_label)
+    
+    # Publicar en la siguiente cola
+    canal_rabbitmq.publicar("tnm.validation.request", {
+        "job_id": job_id,
+        "recommendations": resultados
+    })
+```
+
+#### **services/ml_validator_service.py - Servicio Validador**
+
+**Responsabilidades:**
+
+1. Conectarse a RabbitMQ y escuchar la cola `tnm.validation.request`
+2. Para cada recomendación recibida:
+   - Validar cada opción de tratamiento
+   - Filtrar rechazados (experimentales, riesgosos)
+   - Publicar solo las aprobadas en la cola `tnm.validation.result`
+
+**Lógica de Validación (Actualmente Mock, Listo para ML Real):**
+
+```python
+def evaluar_tratamiento(opcion):
+    # Pseudocodigo: rechazar si contiene ciertos términos
+    palabras_rechazadas = ["experimental", "no recomendado", "alto riesgo"]
+    
+    if any(palabra in opcion.lower() for palabra in palabras_rechazadas):
+        return False  # Rechazar
+    return True       # Aprobar
+```
+
+**Reemplazar con ML Real:**
+
+```python
+# Simplemente cambiar la función a:
+def evaluar_tratamiento(opcion):
+    # Cargar modelo entrenado
+    probabilidad = ml_model.predict(opcion)
+    return probabilidad > 0.75  # Si probabilidad > 75% → aprobar
+```
+
+### Frontend (JavaScript)
+
+**Archivo: `frontend/js/entradas.js`**
+
+**Flujo:**
+
+1. Usuario llena formulario TNM (T, N, M)
+2. Hace click en "Enviar"
+3. JavaScript envía `POST /pipeline/submit`
+4. Obtiene `job_id`
+5. Inicia polling cada 2 segundos a `GET /pipeline/result/<job_id>`
+6. Cuando `status === "completed"`, muestra resultados
+7. Fallback: Si microservicios fallan, llama directamente a `GET /get_stage_info`
+
+```javascript
+// Pseudocódigo
+const respuesta = await fetch("http://localhost:5000/pipeline/submit", {
+    method: "POST",
+    body: JSON.stringify({
+        tnm: {
+            t_label: "T1",
+            n_label: "N0",
+            m_label: "M0"
+        }
+    })
+});
+
+const { job_id } = await respuesta.json();
+
+// Iniciar polling
+const poll = setInterval(async () => {
+    const resultado = await fetch(`/pipeline/result/${job_id}`);
+    const datos = await resultado.json();
+    
+    if (datos.status === "completed") {
+        mostrarResultados(datos.result);
+        clearInterval(poll);
+    }
+}, 2000);  // Cada 2 segundos
+```
+
+## Topología de Servicios
 
 ## Colas de RabbitMQ
 
