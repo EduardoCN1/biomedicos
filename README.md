@@ -68,6 +68,34 @@ El proyecto implementa una **arquitectura de microservicios desacoplados** que s
 5. **API consume respuestas** → Agrega datos de Neo4j y envía al frontend
 6. **Frontend recibe** → Muestra resultados al usuario
 
+## Cómo Instalar el Proyecto
+
+El proyecto se puede instalar de dos formas:
+
+### Opción 1: Con Docker Compose (Recomendado)
+
+Ideal si desea una instalación rápida sin dependencias locales.
+
+**Requisitos:** Docker Desktop
+
+**Pasos:**
+```powershell
+git clone https://github.com/EduardoCN1/biomedicos.git
+cd biomedicos
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+Ver [DOCKER.md](docs/DOCKER.md) para instrucciones completas y guía de uso.
+
+### Opción 2: Instalación Local (Windows)
+
+Ideal si prefiere usar Neo4j Desktop y Conda.
+
+**Requisitos:** Miniforge/Conda, Neo4j 5.x
+
+**Pasos:** Ver [SETUP.md](docs/SETUP.md) para instalación inicial, y [USO_DIARIO_SIN_DOCKER.md](docs/USO_DIARIO_SIN_DOCKER.md) para uso diario.
+
 ## Estructura de Carpetas 
 
 Ver [ARCHITECTURE.md](docs/ARCHITECTURE.md) para detalle completo.
@@ -232,6 +260,7 @@ Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detal
 
 ## Documentación Completa
 
+  - **[DOCKER.md](docs/DOCKER.md)** - Instalación y uso del proyecto completo con Docker Compose
   - **[USO_DIARIO.md](docs/USO_DIARIO.md)** - Guía para uso día a día (después del setup)
   - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Arquitectura de microservicios y RabbitMQ (colas, topología)
   - **[DATABASE.md](docs/DATABASE.md)** - Gestión de datos Neo4j (CSV vs dump, backups)

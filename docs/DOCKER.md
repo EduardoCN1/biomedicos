@@ -1,126 +1,312 @@
-# Guia de Docker
+# Instalación y Uso con Docker Compose
 
-Esta guia explica como ejecutar el proyecto con Docker y Docker Compose y como usarlo en el dia a dia.
+Esta guía describe cómo instalar y ejecutar el proyecto completo (incluyendo todos los microservicios) utilizando Docker y Docker Compose.
 
-## Dos caminos disponibles
+## Requisitos Previos
 
-Camino A. Usar Docker
-- No necesitas conda ni Neo4j Desktop
-- Todo corre en contenedores
+Antes de comenzar, debe instalar:
 
-Camino B. Sin Docker
-- Usas conda y Neo4j Desktop
-- Ver [SETUP.md](SETUP.md) y [USO_DIARIO_SIN_DOCKER.md](USO_DIARIO_SIN_DOCKER.md)
+1. **Docker Desktop** (incluye Docker Engine y Docker Compose)
+   - Descargar desde: https://www.docker.com/products/docker-desktop
+   - Instalar siguiendo las instrucciones de instalación estándar
+   - Verificar instalación: `docker --version` y `docker compose version`
 
-## Requisitos (Docker)
+2. **Git** (para clonar el repositorio)
+   - Descargar desde: https://git-scm.com/
+   - Verificar instalación: `git --version`
 
-- Docker Desktop instalado y corriendo
-- Docker Compose v2
-- Puertos libres: 5000 (API), 7474 (Neo4j Browser), 7687 (Neo4j Bolt)
+3. **Recursos del sistema:**
+   - Mínimo 4 GB de RAM disponibles para Docker
+   - Puertos libres: 5000, 5001, 5002, 5672, 7474, 7687, 15672
+   - Al menos 1 GB de espacio en disco
 
-## Archivos Docker en el proyecto
+## Contenedores Incluidos
 
-- `Dockerfile`
-- `docker-compose.yml`
-- `.dockerignore`
-- `.env.docker.example`
+El archivo `docker-compose.yml` configura automáticamente los siguientes servicios:
 
-## Configuracion inicial (primera vez con Docker)
+| Servicio | Puerto | Descripción |
+|----------|--------|-------------|
+| API Principal | 5000 | Flask + Neo4j (orquestación) |
+| Recommender Service | 5001 | Generador de recomendaciones (ML) |
+| ML Validator Service | 5002 | Validador de patrones oncológicos |
+| RabbitMQ | 5672 (AMQP) / 15672 (Admin) | Message broker para comunicación asincrónica |
+| Neo4j | 7474 (Browser) / 7687 (Bolt) | Base de datos de grafos TNM |
 
-1. Crear archivo de variables para Docker:
+## Instalación Inicial
+
+### Paso 1: Clonar el Repositorio
+
 ```powershell
-Copy-Item .env.docker.example .env.docker
+git clone https://github.com/EduardoCN1/biomedicos.git
+cd biomedicos
 ```
 
-2. Levantar contenedores:
+### Paso 2: Crear Archivo de Configuración
+
+Copiar el archivo de ejemplo a `.env`:
+
 ```powershell
-docker compose --env-file .env.docker up --build
+Copy-Item .env.example .env
 ```
 
-3. Verificar servicios:
-- Neo4j Browser: http://localhost:7474
-- API: http://localhost:5000/
+El archivo `.env` contiene las variables de entorno necesarias. Los valores por defecto son adecuados para una instalación local con Docker.
 
-## Uso diario con Docker
+### Paso 3: Construir y Levantar los Servicios
 
-### Iniciar todo
 ```powershell
-docker compose --env-file .env.docker up
+docker compose up --build
 ```
 
-### Detener todo (al terminar de trabajar)
+Este comando realiza las siguientes acciones:
+- Descarga las imágenes de Docker necesarias (RabbitMQ, Neo4j)
+- Construye la imagen personalizada del proyecto
+- Crea y levanta todos los contenedores
+- Configura las redes de comunicación entre servicios
+
+**Tiempo estimado:** 3-5 minutos (depende de la velocidad de descarga)
+
+Una vez completado, debe ver en la terminal mensajes similares a:
+
+```
+biomedicos-rabbitmq      | Ready to accept connections
+biomedicos-neo4j         | Started
+biomedicos-api           | Running on http://0.0.0.0:5000
+biomedicos-recommender   | Connected to RabbitMQ
+biomedicos-ml-validator  | Connected to RabbitMQ
+```
+
+### Paso 4: Verificar la Instalación
+
+Verificar que todos los servicios están en ejecución:
+
+```powershell
+docker ps
+```
+
+Debe mostrar 5 contenedores activos. Alternativamente, probar la conectividad:
+
+```powershell
+# Verificar que la API responde
+Invoke-RestMethod http://localhost:5000/
+
+# Resultado esperado: "En ejecución"
+```
+
+## Prueba del Proyecto
+
+### Acceder a la Aplicación Web
+
+Abrir en el navegador:
+
+```
+http://localhost:5500/frontend/index.html
+```
+
+**Nota:** El frontend requiere tener un servidor HTTP local. Si no está disponible, puede acceder directamente a través de:
+- Click derecho en `frontend/index.html` → "Open with Live Server" (en VS Code)
+- O usar Python: `python -m http.server 5500 --directory frontend`
+
+### Realizar una Prueba Funcional
+
+1. En la aplicación web, llenar el formulario con valores TNM:
+   - T (Tumor): Seleccionar T1 o T2
+   - N (Nódulos): Seleccionar N0 o N1
+   - M (Metástasis): Seleccionar M0
+
+2. Hacer click en el botón "Enviar"
+
+3. Observar los resultados:
+   - Recomendaciones médicas
+   - Pruebas recomendadas
+   - Opciones de tratamiento
+
+### Monitorear los Servicios
+
+**RabbitMQ Admin Console:**
+```
+http://localhost:15672/
+Usuario: guest
+Contraseña: guest
+```
+
+Aquí puede observar:
+- Colas de mensajes activas
+- Mensajes procesados por cada cola
+- Consumidores conectados
+
+**Neo4j Browser:**
+```
+http://localhost:7474/browser
+Usuario: neo4j
+Contraseña: password
+```
+
+Aquí puede ejecutar consultas Cypher sobre la base de datos TNM:
+```cypher
+MATCH (n) RETURN n LIMIT 25
+```
+
+## Uso Diario
+
+### Iniciar los Servicios
+
+```powershell
+docker compose up
+```
+
+Sin la opción `--build`, utiliza las imágenes ya construidas, lo que es más rápido.
+
+### Detener los Servicios
+
 ```powershell
 docker compose down
 ```
-Esto detiene los contenedores Neo4j y API, y libera los puertos 5000, 7474 y 7687.
-Los datos permanecen en el volumen Docker `biomedicos_neo4j_data`.
 
-Opcionalmente, cierra Docker Desktop si no lo usas para otros proyectos.
+Esto detiene todos los contenedores pero conserva los datos en los volúmenes de Docker.
 
-**Importante:** Si quieres eliminar los datos tambien:
+### Ver Logs en Tiempo Real
+
 ```powershell
-# Detener y eliminar volumenes (BORRA DATOS)
-docker compose down -v
+# Todos los servicios
+docker compose logs -f
+
+# Un servicio específico
+docker compose logs -f api
+docker compose logs -f recommender
+docker compose logs -f neo4j
 ```
 
-### Reiniciar solo la API
+### Reiniciar un Servicio Específico
+
 ```powershell
 docker compose restart api
 ```
 
-### Ver logs
-```powershell
-docker compose logs -f
-```
+## Gestión de Datos
 
-## Carga de datos con Docker
+### Importar Datos desde CSV
 
-### Opcion A: Importar desde CSV
 ```powershell
 docker compose exec api python scripts/import_csv.py
 ```
 
-### Opcion B: Restaurar dump
-1. Copia el dump a `data/backups/`.
-2. Deten Neo4j:
+Este script:
+1. Lee los archivos CSV desde `data/nodos.csv` y `data/relaciones.csv`
+2. Conecta a Neo4j
+3. Crea todos los nodos y relaciones en la base de datos
+
+### Restaurar desde Copia de Seguridad
+
+1. Colocar el archivo `.dump` en `data/backups/`
+
+2. Detener el servicio Neo4j:
 ```powershell
 docker compose stop neo4j
 ```
-3. Restaura el dump:
+
+3. Restaurar la copia de seguridad:
 ```powershell
 docker compose run --rm neo4j neo4j-admin database load neo4j --from-path=/backups --overwrite-destination=true
 ```
-4. Inicia Neo4j:
+
+4. Reiniciar Neo4j:
 ```powershell
 docker compose start neo4j
 ```
 
-## Verificacion rapida
+### Crear Copia de Seguridad
 
 ```powershell
-Invoke-RestMethod http://localhost:5000/
-Invoke-RestMethod http://localhost:5000/labels/t
+docker compose exec neo4j neo4j-admin database dump neo4j --to-path=/backups
 ```
 
-## Problemas comunes con Docker
+El archivo será guardado en `data/backups/` con el nombre `neo4j.dump`.
 
-- La API arranca antes de Neo4j:
-  - Espera 10-20 segundos o ejecuta `docker compose restart api`.
-- Codigo 137 en el contenedor api:
-  - Falta de memoria. Aumenta RAM en Docker Desktop.
-- Cambios de credenciales:
-  - Actualiza `.env.docker` y reinicia contenedores.
+## Limpiar y Resetear
 
-## Uso sin Docker (resumen)
+### Detener y Eliminar Todo (Conservar Datos)
 
-Si no usas Docker, el flujo recomendado es:
-- Crear entorno conda
-- Iniciar Neo4j Desktop
-- Ejecutar `scripts/run.ps1`
-- Ver [SETUP.md](SETUP.md) para primera vez
-- Ver [USO_DIARIO.md](USO_DIARIO.md) para uso diario
+```powershell
+docker compose down
+```
 
-## Notas
+### Detener y Borrar Todo (Incluir Datos)
 
-- El frontend puede seguir ejecutandose con Live Server en local.
-- Para produccion, considera un reverse proxy y variables seguras.
+```powershell
+docker compose down -v
+```
+
+**Advertencia:** Este comando elimina todos los volúmenes, incluyendo los datos de Neo4j. Use solo si desea empezar desde cero.
+
+### Limpiar Imágenes no Utilizadas
+
+```powershell
+docker image prune -a
+```
+
+## Solucionar Problemas
+
+### Error: "Cannot connect to Docker daemon"
+
+**Causa:** Docker Desktop no está ejecutándose.
+
+**Solución:**
+- Abrir Docker Desktop
+- Esperar a que aparezca el ícono de Docker en la bandeja del sistema
+- Intentar nuevamente
+
+### Error: "Port 5000 is already in use"
+
+**Causa:** Otro proceso está usando el puerto 5000.
+
+**Solución opción 1:** Cambiar el puerto en `.env`:
+```ini
+PORT=5001
+```
+
+**Solución opción 2:** Terminar el proceso que ocupa el puerto:
+```powershell
+Get-NetTCPConnection -LocalPort 5000 | Stop-Process -Force
+```
+
+### Error: "Timeout waiting for Neo4j"
+
+**Causa:** Neo4j tarda en inicializarse.
+
+**Solución:** Esperar 30-60 segundos adicionales y revisar logs:
+```powershell
+docker compose logs neo4j
+```
+
+### Los microservicios no se conectan a RabbitMQ
+
+**Causa:** RabbitMQ no ha terminado de inicializarse.
+
+**Solución:** Reiniciar los servicios:
+```powershell
+docker compose restart recommender ml-validator
+```
+
+### Cambios de código no se reflejan
+
+**Causa:** Las imágenes fueron construidas antes del cambio.
+
+**Solución:** Reconstruir:
+```powershell
+docker compose down
+docker compose up --build
+```
+
+## Alternativa: Instalación Sin Docker
+
+Si prefiere instalar el proyecto sin Docker, consulte:
+- [SETUP.md](SETUP.md) - Instalación inicial con Conda y Neo4j Desktop
+- [USO_DIARIO_SIN_DOCKER.md](USO_DIARIO_SIN_DOCKER.md) - Uso diario sin Docker
+
+## Referencias Adicionales
+
+- [MICROSERVICIOS.md](MICROSERVICIOS.md) - Arquitectura detallada de microservicios y RabbitMQ
+- [DATABASE.md](DATABASE.md) - Gestión de datos en Neo4j
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Solución de problemas avanzados
+- [Documentación oficial Docker](https://docs.docker.com/)
+- [Documentación oficial Docker Compose](https://docs.docker.com/compose/)
