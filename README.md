@@ -260,19 +260,18 @@ Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detal
 
 ## Documentación Completa
 
-  - **[DOCKER.md](docs/DOCKER.md)** - Instalación y uso del proyecto completo con Docker Compose
-  - **[USO_DIARIO.md](docs/USO_DIARIO.md)** - Guía para uso día a día (después del setup)
-  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Arquitectura de microservicios y RabbitMQ (colas, topología)
-  - **[DATABASE.md](docs/DATABASE.md)** - Gestión de datos Neo4j (CSV vs dump, backups)
-  - **[DOCKER.md](docs/DOCKER.md)** - Guía para ejecutar el proyecto con Docker (con Docker Compose)
-  - **[SETUP.md](docs/SETUP.md)** - Instalación paso a paso con troubleshooting inicial
+Consulte la documentación apropiada según su caso de uso:
+
+  - **[DOCKER.md](docs/DOCKER.md)** - Instalación y uso del proyecto completo con Docker Compose (recomendado)
+  - **[SETUP.md](docs/SETUP.md)** - Instalación local sin Docker (Conda + Neo4j Desktop)
+  - **[USO_DIARIO_SIN_DOCKER.md](docs/USO_DIARIO_SIN_DOCKER.md)** - Guía de uso diario sin Docker
+  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Arquitectura detallada de microservicios y RabbitMQ
+  - **[DATABASE.md](docs/DATABASE.md)** - Gestión de datos Neo4j (CSV, dump, backups)
   - **[API.md](docs/API.md)** - Referencia de endpoints con ejemplos cURL y PowerShell
-  - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Flujos de datos, endpoints y dependencias
-  - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Problemas avanzados y soluciones
+  - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Flujos de datos y dependencias del proyecto
+  - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas avanzados
   - **[DIAGRAMAS.md](docs/DIAGRAMAS.md)** - Diagramas Mermaid de arquitectura
-  - **[ESTADO_FINAL.md](docs/ESTADO_FINAL.md)** - Resumen de reorganización completada
-  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** -  Mejoras UI/UX v2.2 (Marzo 2026)
-  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Flujo TNM → Recomendación → Validación ML por colas RabbitMQ
+  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - Mejoras UI/UX v2.2 (Marzo 2026)
 
 ## Endpoints Disponibles
 
