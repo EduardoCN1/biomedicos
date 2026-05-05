@@ -242,7 +242,8 @@ Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detal
   - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Problemas avanzados y soluciones
   - **[DIAGRAMAS.md](docs/DIAGRAMAS.md)** - Diagramas Mermaid de arquitectura
   - **[ESTADO_FINAL.md](docs/ESTADO_FINAL.md)** - Resumen de reorganización completada
-  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** -  Mejoras UI/UX v2.2 (Marzo 2026)
+  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - ✨ Mejoras UI/UX v2.2 (Marzo 2026)
+  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - ✨ Flujo TNM → Recomendación → Validación ML por colas RabbitMQ
 
 ## Endpoints Disponibles
 

@@ -21,3 +21,9 @@ DEBUG = ENVIRONMENT == "development"
 
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# RabbitMQ / Mensajería
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2F")
+RECOMMENDATION_REQUEST_QUEUE = os.getenv("RECOMMENDATION_REQUEST_QUEUE", "tnm.recommendation.request")
+VALIDATION_REQUEST_QUEUE = os.getenv("VALIDATION_REQUEST_QUEUE", "tnm.validation.request")
+VALIDATION_RESULT_QUEUE = os.getenv("VALIDATION_RESULT_QUEUE", "tnm.validation.result")

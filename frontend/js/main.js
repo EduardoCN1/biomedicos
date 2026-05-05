@@ -218,6 +218,10 @@ function updateProfile() {
     const N = document.getElementById('N').value;
     document.getElementById('display-N').textContent = N ? N : 'Sin ingresar';
 
+    const surgeryPreferenceSelect = document.getElementById('surgeryPreference');
+    const surgeryPreference = surgeryPreferenceSelect ? surgeryPreferenceSelect.value : '';
+    document.getElementById('display-surgery-preference').textContent = surgeryPreference ? surgeryPreference : 'Sin ingresar';
+
     // Inmunohistoquímica (IHC)
     const RP = document.getElementById('RP').value;
     document.getElementById('display-RP').textContent = RP ? RP : 'Sin seleccionar';
@@ -333,8 +337,13 @@ function resetConsulta() {
 
 // Initialize Profile on Load
 window.addEventListener('load', function() {
-    updateProfile();
-    loadModals();
+    loadModals().then(() => {
+        updateProfile();
+    }).catch(error => {
+        console.error('Error loading modals:', error);
+        // Intentar actualizar perfil incluso si hay error
+        updateProfile();
+    });
 });
 
 // Load Modals Function
@@ -347,8 +356,8 @@ function loadModals() {
         { id: 'modal-ihc-container', file: 'modals/modal-ihc.html' }
     ];
 
-    modalsToLoad.forEach(modal => {
-        fetch(modal.file)
+    const loadPromises = modalsToLoad.map(modal => {
+        return fetch(modal.file)
             .then(response => response.text())
             .then(html => {
                 const container = document.getElementById(modal.id);
@@ -358,4 +367,6 @@ function loadModals() {
             })
             .catch(error => console.error(`Error loading ${modal.file}:`, error));
     });
+
+    return Promise.all(loadPromises);
 }
