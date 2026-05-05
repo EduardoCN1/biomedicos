@@ -4,13 +4,69 @@ Aplicación Flask+Neo4j para consultoría de estadios oncológicos (TNM), prueba
 
 ## Resumen Rápido
 ___________________________________________________________________
-| Aspecto          |    Detalle                                    |
-|------------------|-----------------------------------------------|
-| **Stack**        | Flask 3.0 + Neo4j 5.x + Bootstrap 5           |
-| **Lenguajes**    | Python (backend), JavaScript/HTML5 (frontend) |
-| **Base Datos**   | Neo4j (graph database)                        |
-| **OS**           | Windows 10/11, Linux/macOS compatible         |
-| **Python**       | 3.11+ (recomendado con Miniforge)             |
+| Aspecto          |    Detalle                                           |
+|------------------|-----------================================================|
+| **Stack**        | Flask 3.0 + Neo4j 5.x + RabbitMQ + Bootstrap 5       |
+| **Lenguajes**    | Python (backend), JavaScript/HTML5 (frontend)        |
+| **Base Datos**   | Neo4j (graph database)                               |
+| **Mensajería**   | RabbitMQ (message broker) - Comunicación asíncrona   |
+| **OS**           | Windows 10/11, Linux/macOS compatible                |
+| **Python**       | 3.11+ (recomendado con Miniforge)                    |
+
+## Arquitectura de Microservicios y Mensajería
+
+El proyecto implementa una **arquitectura de microservicios desacoplados** que se comunican a través de **RabbitMQ**:
+
+```
+┌─────────────┐
+│   Frontend  │ (HTML + JS)
+│ (puerto5500)│
+└──────┬──────┘
+       │ HTTP requests
+       ▼
+┌──────────────────────────────────────────────────┐
+│          API Principal (biomedicos-api)          │
+│          Flask + Neo4j (puerto 5000)             │
+│  • Recibe solicitudes del frontend               │
+│  • Publica eventos a RabbitMQ (validación, etc)  │
+│  • Enruta respuestas al frontend                 │
+└──────────────┬───────────────────────────────────┘
+               │ RabbitMQ Pub/Sub
+               ▼
+      ┌────────────────┐
+      │   RabbitMQ     │ (puerto 15672 - admin)
+      │  (message      │ (puerto 5672 - AMQP)
+      │   broker)      │
+      └────┬───────┬──┘
+           │       │
+    ┌──────▼─┐   ┌─▼────────┐
+    │Recomm. │   │Validator │
+    │Service │   │Service   │
+    │(ML)    │   │(ML)      │
+    │5001    │   │5002      │
+    └────────┘   └──────────┘
+       ↑               ↑
+       └───► Neo4j ◄───┘
+```
+
+### Microservicios
+
+| Servicio | Puerto | Función | Tecnología |
+|----------|--------|---------|------------|
+| **API** | 5000 | Endpoint principal, orquestación | Flask + Neo4j |
+| **Recommender** | 5001 | Genera recomendaciones ML | Python + scikit-learn/TensorFlow |
+| **ML Validator** | 5002 | Valida patrones oncológicos | Python + ML models |
+| **RabbitMQ** | 5672/15672 | Message broker, comunicación async | RabbitMQ |
+| **Neo4j** | 7474/7687 | Base de datos de grafos | Neo4j |
+
+### Flujo de Mensajería
+
+1. **Usuario envía formulario** → Frontend
+2. **API recibe datos** → Valida y publica a cola `requests` en RabbitMQ
+3. **Validator consume** → Valida patrones, publica resultado a cola `validations`
+4. **Recommender consume** → Genera recomendaciones, publica a cola `recommendations`
+5. **API consume respuestas** → Agrega datos de Neo4j y envía al frontend
+6. **Frontend recibe** → Muestra resultados al usuario
 
 ## Estructura de Carpetas 
 
@@ -56,6 +112,13 @@ biomedicos/
 ├── requirements.txt
 └── README.md
 ```
+
+###  Novedades v2.3 (Mayo 2026)
+- **Arquitectura de Microservicios**: Comunicación asíncrona con RabbitMQ
+- **API Principal**: Servicio Flask centralizado con validación de datos
+- **Recomendador (ML)**: Microservicio que genera recomendaciones basadas en ML
+- **Validador de ML**: Microservicio que valida patrones oncológicos
+- **Message Broker**: RabbitMQ para orquestar comunicación entre servicios
 
 ###  Novedades v2.2 (Marzo 2026)
 - **Reestructuración Frontend**: CSS, JS y modales en archivos separados
@@ -170,15 +233,16 @@ Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detal
 ## Documentación Completa
 
   - **[USO_DIARIO.md](docs/USO_DIARIO.md)** - Guía para uso día a día (después del setup)
+  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Arquitectura de microservicios y RabbitMQ (colas, topología)
   - **[DATABASE.md](docs/DATABASE.md)** - Gestión de datos Neo4j (CSV vs dump, backups)
-  - **[DOCKER.md](docs/DOCKER.md)** - Guía para ejecutar el proyecto con Docker
+  - **[DOCKER.md](docs/DOCKER.md)** - Guía para ejecutar el proyecto con Docker (con Docker Compose)
   - **[SETUP.md](docs/SETUP.md)** - Instalación paso a paso con troubleshooting inicial
   - **[API.md](docs/API.md)** - Referencia de endpoints con ejemplos cURL y PowerShell
   - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Flujos de datos, endpoints y dependencias
   - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Problemas avanzados y soluciones
   - **[DIAGRAMAS.md](docs/DIAGRAMAS.md)** - Diagramas Mermaid de arquitectura
   - **[ESTADO_FINAL.md](docs/ESTADO_FINAL.md)** - Resumen de reorganización completada
-  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - ✨ Mejoras UI/UX v2.2 (Marzo 2026)
+  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** -  Mejoras UI/UX v2.2 (Marzo 2026)
 
 ## Endpoints Disponibles
 
@@ -197,12 +261,27 @@ Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detal
   Crear archivo `.env` (copiar desde `.env.example`):
 
   ```ini
+  # Neo4j
   NEO4J_URI=neo4j://127.0.0.1:7687
   NEO4J_USER=neo4j
   NEO4J_PASSWORD=your_password_here
+  
+  # API Principal
   HOST=0.0.0.0
   PORT=5000
   ENVIRONMENT=development
+  
+  # RabbitMQ
+  RABBITMQ_HOST=localhost
+  RABBITMQ_PORT=5672
+  RABBITMQ_USER=guest
+  RABBITMQ_PASSWORD=guest
+  
+  # Microservicios
+  RECOMMENDER_HOST=localhost
+  RECOMMENDER_PORT=5001
+  VALIDATOR_HOST=localhost
+  VALIDATOR_PORT=5002
   ```
   **Nota:** No commitear `.env` a Git (contiene credenciales). Usar `.env.example` como template.
 
