@@ -42,16 +42,32 @@ class Neo4JDatabase:
               (target)-[:Has_Treatment_Option]->(treatment)
         RETURN target AS Stage, collect(distinct test.label) AS RecommendedTests, collect(distinct treatment.label) AS TreatmentOptions
         """
-        stages = []
-        with self.driver.session() as session:
-            result = session.run(query, t_label=t_label, n_label=n_label, m_label=m_label)
-            for record in result:
-                stages.append({
+
+        def read_stages(tx):
+            result = tx.run(query, t_label=t_label, n_label=n_label, m_label=m_label)
+            return [
+                {
                     "Stage": record["Stage"]["label"],
                     "RecommendedTests": record["RecommendedTests"],
                     "TreatmentOptions": record["TreatmentOptions"]
-                })
+                }
+                for record in result
+            ]
+
+        # execute_read reintenta ante errores transitorios, como la primera consulta
+        # tras reiniciar Neo4j (con session.run esa consulta fallaba con un 500)
+        with self.driver.session() as session:
+            stages = session.execute_read(read_stages)
         return stages if stages else None
+
+    def get_labels(self, node_label):
+        query = f"MATCH (n:{node_label}) RETURN DISTINCT n.label AS label LIMIT 100"
+
+        def read_labels(tx):
+            return [record["label"] for record in tx.run(query)]
+
+        with self.driver.session() as session:
+            return session.execute_read(read_labels)
 
 
 # Conectar a base de datos usando configuración
@@ -265,37 +281,19 @@ def pipeline_health():
 @app.route('/labels/t', methods=['GET'])
 @cross_origin()
 def list_t_labels():
-    query = "MATCH (n:T_Stage_Finding) RETURN DISTINCT n.label AS label LIMIT 100"
-    labels = []
-    with db.driver.session() as session:
-        result = session.run(query)
-        for r in result:
-            labels.append(r["label"])
-    return jsonify(labels)
+    return jsonify(db.get_labels("T_Stage_Finding"))
 
 
 @app.route('/labels/n', methods=['GET'])
 @cross_origin()
 def list_n_labels():
-    query = "MATCH (n:N_Stage_Finding) RETURN DISTINCT n.label AS label LIMIT 100"
-    labels = []
-    with db.driver.session() as session:
-        result = session.run(query)
-        for r in result:
-            labels.append(r["label"])
-    return jsonify(labels)
+    return jsonify(db.get_labels("N_Stage_Finding"))
 
 
 @app.route('/labels/m', methods=['GET'])
 @cross_origin()
 def list_m_labels():
-    query = "MATCH (n:M_Stage_Finding) RETURN DISTINCT n.label AS label LIMIT 100"
-    labels = []
-    with db.driver.session() as session:
-        result = session.run(query)
-        for r in result:
-            labels.append(r["label"])
-    return jsonify(labels)
+    return jsonify(db.get_labels("M_Stage_Finding"))
 
 
 @app.route('/pipeline/debug', methods=['GET'])

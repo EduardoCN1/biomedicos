@@ -74,19 +74,21 @@ class Neo4JDatabase:
                collect(distinct treatment.label) AS TreatmentOptions
         """
 
-        stages: List[Dict[str, Any]] = []
-        with self.driver.session() as session:
-            result = session.run(query, t_label=t_label, n_label=n_label, m_label=m_label)
-            for record in result:
-                stages.append(
-                    {
-                        "Stage": record["Stage"]["label"],
-                        "RecommendedTests": record["RecommendedTests"],
-                        "TreatmentOptions": record["TreatmentOptions"],
-                    }
-                )
+        def read_stages(tx) -> List[Dict[str, Any]]:
+            result = tx.run(query, t_label=t_label, n_label=n_label, m_label=m_label)
+            return [
+                {
+                    "Stage": record["Stage"]["label"],
+                    "RecommendedTests": record["RecommendedTests"],
+                    "TreatmentOptions": record["TreatmentOptions"],
+                }
+                for record in result
+            ]
 
-        return stages
+        # execute_read reintenta ante errores transitorios, como la primera consulta
+        # tras reiniciar Neo4j
+        with self.driver.session() as session:
+            return session.execute_read(read_stages)
 
 
 def create_connection() -> pika.BlockingConnection:
@@ -106,6 +108,8 @@ def publish(channel, queue_name: str, payload: Dict[str, Any]) -> None:
 
 
 def run() -> None:
+    # Una sola conexión a Neo4j para toda la vida del servicio: no se cierra al
+    # reconectar con RabbitMQ (antes se cerraba y se seguía usando cerrada)
     db = Neo4JDatabase(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
 
     while True:
@@ -159,11 +163,6 @@ def run() -> None:
         except Exception as exc:
             print(f"[recommender] Broker desconectado o error: {exc}. Reintentando en 5s...")
             time.sleep(5)
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
 
 
 if __name__ == "__main__":
