@@ -1,423 +1,179 @@
-# Troubleshooting Avanzado
+# Troubleshooting
 
-## Problemas Comunes y Soluciones
+Problemas frecuentes al instalar y usar el proyecto con Docker Compose. Para la instalación, ver [DOCKER.md](DOCKER.md).
 
-### 1. Error: "Conda no encontrado" o "conda: el término no se reconoce"
+## Herramientas de Diagnóstico
 
-**Síntomas:**
-```
-conda: el término no se reconoce como el nombre de un cmdlet, función, script
-```
+Antes de buscar un problema concreto, estas herramientas suelen indicar la causa:
 
-**Soluciones:**
-
-a) **Reiniciar VS Code completamente:**
 ```powershell
-# Cerrar todas las instancias de PowerShell
-# Cerrar VS Code
-# Abrir VS Code nuevamente
-# Abrir PowerShell integrada
+docker compose ps -a                        # Estado de los servicios (seed debe estar "Exited (0)")
+docker compose logs -f                      # Registros de todos los servicios
+docker compose logs api recommender ml-validator
+Invoke-RestMethod http://localhost:5000/pipeline/health   # RabbitMQ y consumidor de la API
 ```
 
-b) **Ejecutar conda init:**
-```powershell
-# Si tienes Miniforge/Anaconda instalado
-python -m conda init powershell
-# Luego cerrar y abrir PowerShell
-```
-
-c) **Agregar a PATH manualmente:**
-- En Windows, buscar "Variables de entorno"
-- Editar Path
-- Agregar: `C:\Users\[TuUsuario]\Miniforge3\Scripts`
-
-d) **Verificar instalación:**
-```powershell
-# Si conda no funciona, verificar python
-python --version
-
-# Si python funciona, usar:
-python -m conda --version
-```
+- **Consola de RabbitMQ** (http://localhost:15672, `guest`/`guest`): pestaña **Queues** para ver si los mensajes se acumulan en alguna cola.
+- **Neo4j Browser** (http://localhost:7474): para comprobar los datos (ver [DATABASE.md](DATABASE.md#verificar-los-datos)).
+- **Herramientas de desarrollo del navegador** (F12): pestañas **Console** y **Network** para ver errores de JavaScript y las llamadas a la API.
 
 ---
 
-### 2. Error: "OSError: [WinError 10013] Access denied"
+## Instalación y Arranque
 
-**Síntomas:**
+### 1. Error: "Cannot connect to the Docker daemon"
+
+**Causa:** Docker Desktop no está en ejecución.
+
+**Solución:** Abrir Docker Desktop, esperar a que indique que está en ejecución y repetir el comando.
+
+### 2. Error: "ports are not available" o "port is already allocated"
+
+**Síntomas (Windows):**
 ```
-An attempt was made to access a socket in a way forbidden by its access permissions
-Port 5000: [WinError 10013] An attempt could not bind
+ports are not available: exposing port TCP 0.0.0.0:5500 -> 127.0.0.1:0:
+listen tcp 0.0.0.0:5500: bind: Only one usage of each socket address
+(protocol/network address/port) is normally permitted.
 ```
 
-**Causa:** Otra aplicación usa puerto 5000 o está bloqueado por firewall
+**Causa:** Otro programa usa ese puerto.
 
 **Soluciones:**
 
-a) **Cambiar puerto:**
-Editar `.env`:
+a) **Puerto 5500 (aplicación web):** cambiarlo en `.env` y volver a levantar:
 ```ini
-PORT=5001
+FRONTEND_PORT=5501
 ```
-
-b) **Encontrar y matar proceso:** 
 ```powershell
-# Encontrar qué usa puerto 5000
-Get-NetTCPConnection -LocalPort 5000
-
-# Matar ese proceso
-Stop-Process -Id [PID] -Force
+docker compose up -d
 ```
 
-c) **Permitir firewall:**
-- Windows Defender → Firewall → Permitir app → Python
-
-d) **Usar otro puerto:**
-En `frontend/js/entradas.js`, cambiar:
-```javascript
-// De:
-url: 'http://127.0.0.1:5000/...'
-// A:
-url: 'http://127.0.0.1:5001/...'
+b) **Resto de puertos (5000, 5672, 7474, 7687, 15672):** identificar el programa y cerrarlo:
+```powershell
+Get-Process -Id (Get-NetTCPConnection -LocalPort 5000 -State Listen).OwningProcess
 ```
+
+c) **macOS, puerto 5000:** lo usa el Receptor AirPlay. Se desactiva en Ajustes del Sistema → General → AirDrop y Handoff.
+
+### 3. Error: "dependency failed to start: container biomedicos-neo4j ..."
+
+**Síntomas:** El mensaje termina en `is unhealthy` o en `exited (1)`, y el resto de servicios no arranca.
+
+**Causas y soluciones:**
+- **Contraseña de menos de 8 caracteres** en `.env`: Neo4j 5 no arranca. Usar una más larga.
+- **Contraseña cambiada después de crear el volumen:** Neo4j conserva la original y la comprobación de salud falla. Recrear el volumen (los datos se recargan desde los CSV):
+  ```powershell
+  docker compose down -v
+  docker compose up -d
+  ```
+- **Otros casos:** revisar `docker compose logs neo4j`.
+
+### 4. `seed` termina con error
+
+**Diagnóstico:**
+```powershell
+docker compose logs seed
+```
+
+El mensaje `[ERROR]` indica la causa: CSV no encontrado o fallo al importar. La importación se hace en una sola transacción, así que un error no deja datos a medias. Corregir la causa y ejecutar `docker compose up -d`.
+
+### 5. Los cambios de código no se reflejan
+
+- **Backend, microservicios, scripts o dependencias:** la imagen se construyó antes del cambio. Ejecutar `docker compose up -d --build`.
+- **Frontend:** el navegador puede estar usando una copia en caché. Recargar con `Ctrl+F5`.
 
 ---
 
-### 3. Error: "ModuleNotFoundError: No module named 'py2neo'"
+## Funcionamiento
 
-**Síntomas:**
-```python
-ModuleNotFoundError: No module named 'py2neo'
+### 6. La API devuelve error 500 con "Unable to retrieve routing information"
+
+**Síntomas:** En `docker compose logs api`:
+```
+neo4j.exceptions.ServiceUnavailable: Unable to retrieve routing information
 ```
 
-**Causa:** Dependencia no instalada en el entorno activado
+**Causa:** Neo4j se reinició (o aún estaba arrancando) mientras la API seguía en marcha. La primera consulta posterior falla porque la API intenta usar la conexión anterior; las siguientes ya funcionan. No tiene relación con la terminal desde la que se ejecutan los comandos.
+
+**Solución:** Repetir la consulta. Si persiste, comprobar que Neo4j está `healthy` (`docker compose ps`) y reiniciar la API:
+```powershell
+docker compose restart api
+```
+
+### 7. Aviso "Modo degradado" en la página
+
+**Causa:** El pipeline de microservicios no respondió (RabbitMQ, el recomendador o el validador no están disponibles, o el trabajo no terminó en 60 segundos). La página consultó directamente a la API y muestra resultados **sin validar**.
+
+**Diagnóstico:**
+```powershell
+docker compose ps
+Invoke-RestMethod http://localhost:5000/pipeline/health
+docker compose logs recommender ml-validator
+```
+
+`/pipeline/health` debe indicar `"rabbitmq": "up"` y `"consumer": "running"`. Si algún servicio está detenido: `docker compose up -d`.
+
+### 8. "No se encontraron tratamientos para estos parámetros"
+
+**Causas posibles:**
+- **Neo4j no tiene datos:** comprobar `docker compose logs seed` y el conteo de nodos (ver [DATABASE.md](DATABASE.md#verificar-los-datos)).
+- **La combinación T/N/M no tiene estadios con tratamientos en los datos.** Probar con una combinación conocida, por ejemplo T1, N0, M0.
+- **Todos los tratamientos eran quirúrgicos** y se indicó que la paciente no desea cirugía: se filtran Surgery, Lumpectomy y Mastectomy.
+
+### 9. La página se ve sin estilos o no responde al pulsar botones
+
+**Causa:** No se pudieron cargar Bootstrap, jQuery o Toastr, que se descargan desde CDN.
+
+**Solución:** Comprobar la conexión a internet y, en la pestaña **Network** de las herramientas de desarrollo (F12), que no haya errores al cargar `cdnjs.cloudflare.com` o `code.jquery.com` (pueden estar bloqueados por un proxy o un bloqueador de contenido).
+
+### 10. La página no se conecta a la API (error de red o CORS)
+
+**Síntomas:** En la consola del navegador aparecen errores al llamar a `http://127.0.0.1:5000/...`.
 
 **Soluciones:**
-
-a) **Reinstalar dependencias:**
-```powershell
-conda activate biomedicos
-pip install -r requirements.txt
-```
-
-b) **Verificar entorno activado:**
-```powershell
-# Debe mostrar (biomedicos) al inicio
-conda env list
-```
-
-c) **Si sigue sin funcionar:**
-```powershell
-# Eliminar y recrear entorno
-conda remove -n biomedicos --all
-.\scripts\setup.ps1
-```
+- Comprobar que la API responde: `Invoke-RestMethod http://localhost:5000/` debe devolver `"En ejecución"`.
+- El frontend llama a la API en `http://127.0.0.1:5000`, así que la página debe abrirse en el mismo equipo donde corre Docker.
 
 ---
 
-### 4. Error: "Neo4j connection refused" o timeout
+## Tests
 
-**Síntomas:**
-```
-Connection refused
-[Errno 111] Connection refused  
-socket.timeout: timed out
-```
+### 11. Fallan los tests de `pytest`
 
-**Causa:** Neo4j no está corriendo o credenciales incorrectas
-
-**Soluciones:**
-
-a) **Verificar Neo4j está corriendo:**
+Los tests usan Neo4j con datos. Levantar el proyecto antes de ejecutarlos:
 ```powershell
-# Abrir navegador
-http://localhost:7474/
-
-# Debe mostrar la interfaz web de Neo4j
+docker compose up -d
+docker compose run --rm api python -m pytest tests -v
 ```
 
-b) **Si no abre:**
-```powershell
-# Si Neo4j está instalado localmente
-neo4j start
+### 12. `test-pipeline.ps1` termina con "TIMEOUT"
 
-# O si está en Docker
-docker start neo4j
-```
-
-c) **Verificar credenciales en .env:**
-```ini
-NEO4J_URI=neo4j://127.0.0.1:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=tucontraseña123
-```
-
-d) **Cambiar contraseña:**
-- Ir a http://localhost:7474
-- Login default: neo4j / neo4j
-- Cambiar contraseña
-- Actualizar `.env` con nueva contraseña
-
-e) **Verificar URI format:**
-```
- Correcto: neo4j://127.0.0.1:7687
- Incorrecto: bolt://127.0.0.1:7687 (versiones antiguas)
- Incorrecto: http://127.0.0.1:7474 (web UI, no DB)
-```
+El trabajo no llegó a completarse en 30 segundos. Revisar los registros que el propio script muestra en el paso 3 y el estado de los servicios (ver [problema 7](#7-aviso-modo-degradado-en-la-página)).
 
 ---
 
-### 5. Error: "No module named 'backend.config'" en backend/api.py
+## Git Bash
 
-**Síntomas:**
-```python
-ModuleNotFoundError: No module named 'backend.config'
-```
+### 13. Error: "C:/Program Files/Git/... is not an existing directory"
 
-**Solución:**
+**Causa:** Git Bash convierte los argumentos que empiezan por `/` en rutas de Windows, por ejemplo `--to-path=/backups`.
 
-a) **Verificar `__init__.py` existe:**
-```powershell
-# Debe existir:
-ls backend/__init__.py
-
-# Si no existe:
-echo "" > backend/__init__.py
-```
-
-b) **Ejecutar desde directorio correcto:**
-```powershell
-#  INCORRECTO - desde subfolder
-cd backend
-python run_waitress.py
-
-#  CORRECTO - desde raíz
-cd ..
-python backend/run_waitress.py
-
-#  O usar script:
-.\scripts\run.ps1
-```
-
----
-
-### 6. Frontend no se conecta a Backend (error 404 o CORS)
-
-**Síntomas:**
-```javascript
-// En consola del navegador:
-Access to XMLHttpRequest at 'http://127.0.0.1:5000/...' from origin 'http://localhost:5500' 
-has been blocked by CORS policy
-```
-
-**Soluciones:**
-
-a) **Verificar Backend está corriendo:**
-```powershell
-# En una terminal
-.\scripts\run.ps1
-
-# En otra terminal, verificar
-Invoke-RestMethod http://localhost:5000/
-```
-
-b) **Verificar URL en entradas.js:**
-```javascript
-// frontend/js/entradas.js
-// Buscar y verificar sea:
-url: 'http://127.0.0.1:5000'
-
-// NO:
-url: 'localhost:5000'      # Incorrecto (no es local)
-url: 'example.com:5000'    # Incorrecto
-url: '27.0.0.1:5000'       # Incorrecto (typo)
-```
-
-c) **Verificar CORS está habilitado:**
-```python
-# En backend/api.py debe estar:
-from flask_cors import CORS
-CORS(app)
-```
-
-d) **Verificar Live Server puerto:**
-```javascript
-// Live Server suele usar puerto 5500
-// Si no, verificar en VSCode:
-// Preferences → Extensions → Live Server → Settings
-```
-
----
-
-### 7. Error: "could not be translated to a valid SQL statement" (Neo4j)
-
-**Síntomas:**
-```
-Syntax error in Cypher query
-Invalid property
-```
-
-**Causa:** Query Cypher malformada o propiedades no existen
-
-**Soluciones:**
-
-a) **Verificar propiedades existen:**
-```powershell
-# En Neo4j Browser (http://localhost:7474)
-MATCH (n:T2) RETURN n LIMIT 1
-# Examina el output para ver qué propiedades tiene
-
-# O desde PowerShell:
-Invoke-RestMethod "http://localhost:5000/labels/t" | ConvertTo-Json
-```
-
-b) **Recargar datos:**
-Si las propiedades faltaron al importar:
-```powershell
-# Limpiar Neo4j y reintentar
-python scripts/import_csv.py
-```
-
----
-
-### 8. Error: "Errno 10048: Only one usage of each socket address"
-
-**Síntomas:**
-```
-Address already in use
-[Errno 10048] Only one usage of each socket address
-```
-
-**similar a #2 pero mensaje diferente**
-
-**Soluciones:**
-
-a) **Esperar SO libere el puerto (30 seg):**
-```powershell
-# Esperar y reintentar
-Start-Sleep -Seconds 30
-.\scripts\run.ps1
-```
-
-b) **Forzar liberar puerto:**
-```powershell
-# Encontrar proceso
-netstat -ano | findstr :5000
-
-# Terminar (cambiar con PID real)
-taskkill /PID 12345 /F
-```
-
----
-
-### 9. Error: numpy/pandas compilation error en Windows
-
-**Síntomas:**
-```
-error: Microsoft Visual C++ 14.0 or greater is required
-fatal error C1083: Cannot open include file
-```
-
-**Solución (Usar Conda):**
-```powershell
-# Desinstalar una versión rota
-pip uninstall numpy pandas
-
-# Instalar desde conda-forge (binarias)
-conda install -c conda-forge numpy pandas
-
-# Verificar:
-python -c "import numpy; print(numpy.__version__)"
-```
-
----
-
-### 10. Error: "MIME type ... is not supported" en frontend
-
-**Síntomas:**
-```
-The script from "file:///C:/path/to/file.js" was not loaded because its MIME type 
-is not text/javascript
-```
-
-**Causa:** Rutas relativas incorrectas en HTML
-
-**Solución:**
-
-a) **Usar Live Server (no file://):**
--  Click directo en index.html
--  Click derecho en index.html → "Open with Live Server"
-
-b) **Verificar rutas en index.html:**
-```html
-<!-- Si index.html está en frontend/ -->
-<!--  CORRECTO -->
-<link href="css/stilous.css" rel="stylesheet">
-<script src="js/entradas.js"></script>
-
-<!--  INCORRECTO -->
-<link href="/css/stilous.css" rel="stylesheet">
-<link href="../css/stilous.css" rel="stylesheet">
-```
-
----
-
-## Herramientas de Debugging
-
-### 1. Verificar salud del Backend
-
-```powershell
-# Test básico
-Invoke-RestMethod http://localhost:5000/
-
-# Test completo
-$response = Invoke-RestMethod "http://localhost:5000/get_stage_info?t_label=T2&n_label=N1&m_label=M0"
-$response | ConvertTo-Json -Depth 10
-```
-
-### 2. Ver logs de Neo4j
-
-```powershell
-# Si Neo4j está en carpeta local
-Get-Content $env:NEO4J_HOME\logs\debug.log -Tail 50
-```
-
-### 3. Debug en navegador
-```javascript
-// Abrir Console en Developer Tools (F12)
-// Ver errores en red (Network tab)
-// Ver AJAX calls y respuestas
-```
-
-### 4. Verificar puertos en uso
-
-```powershell
-# Ver todos los puertos en uso
-Get-NetTCPConnection -State Listen | ft -AutoSize
-
-# O específico
-netstat -ano | findstr :5000 | findstr :5500 | findstr :7687
+**Solución:** Usar PowerShell o anteponer `MSYS_NO_PATHCONV=1` al comando:
+```bash
+MSYS_NO_PATHCONV=1 docker compose run --rm --no-deps neo4j neo4j-admin database dump neo4j --to-path=/backups
 ```
 
 ---
 
 ## Checklist de Diagnóstico
 
-Antes de reportar un erro, verificar:
+- [ ] Docker Desktop está en ejecución
+- [ ] `docker compose ps -a` muestra todos los servicios en marcha y `seed` como `Exited (0)`
+- [ ] `biomedicos-neo4j` y `biomedicos-rabbitmq` aparecen como `(healthy)`
+- [ ] `Invoke-RestMethod http://localhost:5000/` responde `"En ejecución"`
+- [ ] `Invoke-RestMethod http://localhost:5000/pipeline/health` indica `"rabbitmq": "up"`
+- [ ] Neo4j tiene 134 nodos (ver [DATABASE.md](DATABASE.md#verificar-los-datos))
+- [ ] La página abre en http://localhost:5500 (o el puerto de `FRONTEND_PORT`)
+- [ ] La consola del navegador (F12) no muestra errores
 
-- [ ] `conda activate biomedicos` está ejecutado
-- [ ] `.env` existe y tiene credenciales correctas
-- [ ] `neo4j://127.0.0.1:7687` es accesible (http://localhost:7474)
-- [ ] `python .\backend\run_waitress.py` arranca sin errores
-- [ ] `Invoke-RestMethod http://localhost:5000/` responde
-- [ ] `frontend/index.html` abre con Live Server (no file://)
-- [ ] `frontend/js/entradas.js` URL es `http://127.0.0.1:5000`
-- [ ] Consola del navegador (F12) no muestra errores JavaScript
-- [ ] Network tab (Dev Tools) muestra requests a 5000
-- [ ] Neo4j tiene datos (`scripts/import_csv.py` ejecutado)
-
-Si todo pasa el checklist pero sigue no funcionando:
-1. Copia ALL output de consola y error
-2. Ejecuta: `python --version`, `conda --version`, `pip list`
-3. Verifica `.env` (sin credenciales reales)
-4. Contacta con output completo
+Si todo pasa el checklist pero sigue sin funcionar, guardar la salida de `docker compose ps -a` y `docker compose logs` para analizarla.
