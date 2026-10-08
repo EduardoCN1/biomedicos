@@ -10,8 +10,8 @@ __________________________________________________________________________
 | **Lenguajes**    | Python (backend), JavaScript/HTML5 (frontend)        |
 | **Base Datos**   | Neo4j (graph database)                               |
 | **Mensajería**   | RabbitMQ (message broker) - Comunicación asíncrona   |
-| **OS**           | Windows 10/11, Linux/macOS compatible                |
-| **Python**       | 3.11+ (recomendado con Miniforge)                    |
+| **Ejecución**    | Docker Compose (Windows, Linux o macOS)              |
+| **Python**       | 3.11 (incluido en la imagen Docker)                  |
 
 ## Arquitectura de Microservicios y Mensajería
 
@@ -68,76 +68,83 @@ El proyecto implementa una **arquitectura de microservicios desacoplados** que s
 5. **API consume respuestas** → Agrega datos de Neo4j y envía al frontend
 6. **Frontend recibe** → Muestra resultados al usuario
 
-## Cómo Instalar el Proyecto
+## Instalación
 
-El proyecto se puede instalar de dos formas:
+El proyecto se ejecuta completo con Docker Compose: no hace falta instalar Python, Neo4j ni Node.js.
 
-### Opción 1: Con Docker Compose (Recomendado)
-
-Ideal si desea una instalación rápida sin dependencias locales.
-
-**Requisitos:** Docker Desktop
+**Requisitos:**
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) (en Windows usa WSL2), con al menos 4 GB de RAM asignados.
+- Git.
+- Unos 2 GB de disco para las imágenes.
+- Conexión a internet: la primera vez se descargan las imágenes, y la página carga Bootstrap, jQuery y Toastr desde CDN.
 
 **Pasos:**
 ```powershell
 git clone https://github.com/EduardoCN1/biomedicos.git
 cd biomedicos
-Copy-Item .env.example .env
-docker compose up --build
+docker compose up -d --build
 ```
 
-Ver [DOCKER.md](docs/DOCKER.md) para instrucciones completas y guía de uso.
+La primera vez tarda unos minutos. Compose construye la imagen del proyecto, espera a que Neo4j y RabbitMQ estén listos y el servicio `seed` carga los datos de `data/*.csv` en Neo4j automáticamente.
 
-### Opción 2: Instalación Local (Windows)
+Cuando termine, abre **http://localhost:5500**.
 
-Ideal si prefiere usar Neo4j Desktop y Conda.
+| Servicio | Dirección | Credenciales |
+|----------|-----------|--------------|
+| Aplicación web | http://localhost:5500 | — |
+| API | http://localhost:5000 | — |
+| Neo4j Browser | http://localhost:7474 | `neo4j` / `password` (o los de tu `.env`) |
+| RabbitMQ (administración) | http://localhost:15672 | `guest` / `guest` |
 
-**Requisitos:** Miniforge/Conda, Neo4j 5.x
+El archivo `.env` es opcional; solo hace falta para cambiar la contraseña de Neo4j o el puerto de la aplicación web (ver [Variables de Entorno](#variables-de-entorno)).
 
-**Pasos:** Ver [SETUP.md](docs/SETUP.md) para instalación inicial, y [USO_DIARIO_SIN_DOCKER.md](docs/USO_DIARIO_SIN_DOCKER.md) para uso diario.
+Ver [DOCKER.md](docs/DOCKER.md) para la guía completa.
 
-## Estructura de Carpetas 
+## Uso Diario
+
+```powershell
+docker compose up -d            # Arrancar (los datos de Neo4j se conservan entre arranques)
+docker compose down             # Detener
+docker compose logs -f          # Ver los registros de todos los servicios
+docker compose ps               # Ver el estado de los servicios
+```
+
+Al aplicar cambios:
+- **Frontend** (`frontend/`): basta con recargar el navegador.
+- **Backend o microservicios** (`backend/`, `services/`, `scripts/`, `requirements.txt`): `docker compose up -d --build`.
+
+## Estructura de Carpetas
 
 Ver [ARCHITECTURE.md](docs/ARCHITECTURE.md) para detalle completo.
 ```
 biomedicos/
-├── backend/                 # Servidor Flask + Neo4j
+├── backend/                 # API Flask (servida con Waitress)
 │   ├── api.py
 │   ├── config.py
 │   ├── run_waitress.py
 │   └── __init__.py
-├── frontend/                # HTML + JavaScript + CSS
-│   ├── index.html           # Página principal (reestructurada v2.2)
+├── services/                # Microservicios que consumen de RabbitMQ
+│   ├── recommender_service.py
+│   └── ml_validator_service.py
+├── frontend/                # HTML + JavaScript + CSS (servido con nginx)
+│   ├── index.html
 │   ├── css/
-│   │   ├── stilous.css      # Estilos globales
-│   │   ├── stilous.scss     # Fuente SCSS
-│   │   └── index-custom.css # Estilos específicos del index
 │   ├── js/
-│   │   ├── config.js        # Configuración
-│   │   ├── entradas.js      # Lógica de negocio
-│   │   └── main.js          # Funciones principales UI
-│   └── modals/              # Modales independientes (v2.2)
-│       ├── modal-personal.html
-│       ├── modal-heredofamiliar.html
-│       ├── modal-tumoral.html
-│       └── modal-ihc.html
-├── data/                    # Datos y backups
+│   └── modals/
+├── data/                    # Datos de Neo4j
 │   ├── nodos.csv
-│   ├── relaciones.csv
-│   └── backups/
-├── scripts/                 # Automatización
-│   ├── setup.ps1            # Instala dependencias
-│   ├── run.ps1              # Arranca servidor
-│   └── import_csv.py        # Importa CSV → Neo4j
+│   └── relaciones.csv
+├── scripts/
+│   ├── import_csv.py        # Carga los CSV en Neo4j (lo ejecuta el servicio seed)
+│   └── test-pipeline.ps1    # Prueba de extremo a extremo del pipeline
 ├── tests/
 │   └── test_api.py
 ├── docs/                    # Documentación
-│   ├── ARCHITECTURE.md
-│   ├── API.md
-│   ├── SETUP.md
-│   └── REESTRUCTURACION_FRONTEND.md  #  Nueva (v2.2)
+├── docker-compose.yml       # Definición de todos los servicios
+├── Dockerfile               # Imagen de la API y los microservicios
 ├── .env.example
 ├── requirements.txt
+├── requirements-dev.txt     # Dependencias de los tests (pytest)
 └── README.md
 ```
 
@@ -156,115 +163,11 @@ biomedicos/
 
 Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detalles completos.
 
-## Inicio Rápido
-
-###  Primera Vez (Setup Completo)
-
-  **1. Instalar Dependencias**
-  ```powershell
-  .\scripts\setup.ps1
-  ```
-
-  **2. Configurar Variables de Entorno**
-  ```powershell
-  Copy-Item .env.example .env
-  # Editar .env con credenciales Neo4j reales
-  ```
-
-  **3. Iniciar Neo4j Desktop**
-  - Abrir Neo4j Desktop
-  - Seleccionar proyecto → Click "Start" (botón verde)
-  - Esperar hasta ver "Running" ✓
-
-  **4. Poblar Base de Datos (solo primera vez)**
-  
-  Tienes **dos opciones** (elige una):
-  
-  **Opción A: Importar desde CSV**
-  ```powershell
-  python .\scripts\import_csv.py
-  ```
-  
-  **Opción B: Restaurar desde dump** (si tienes un archivo `.dump`)
-  ```powershell
-  # Ver guía completa en docs/DATABASE.md
-  neo4j-admin database load neo4j --from-path="data\backups" --overwrite-destination=true
-  ```
-  
-  > **Nota:** Si ya tienes datos en Neo4j, omite este paso. Ver [DATABASE.md](docs/DATABASE.md) para más detalles.
-
-  **5. Arrancar Servidor**
-  ```powershell
-  .\scripts\run.ps1
-  # El servidor estará en http://localhost:5000
-  ```
-
-  **6. Abrir Frontend**
-  - Click derecho en `frontend/index.html` → "Open with Live Server"
-  - O navegar a `http://localhost:5500/frontend/index.html`
-
-###  Uso Diario (Ya hiciste el setup)
-
-  **1. Iniciar Neo4j Desktop**
-  - Abrir Neo4j Desktop → Start (botón verde)
-  - Esperar "Running" ✓
-
-  **2. Abrir PowerShell NUEVA** 
-  ```
-  Importante: Si tenías terminales abiertas antes de iniciar Neo4j,
-  ciérralas y abre una terminal NUEVA. Esto evita errores de conexión.
-  ```
-
-  **3. Arrancar Servidor**
-  ```powershell
-  .\scripts\run.ps1
-  ```
-
-  **4. Abrir Frontend (Live Server)**
-
-  **5. Probar**
-  ```powershell
-  # En otra terminal
-  Invoke-RestMethod http://localhost:5000/
-  # Respuesta: "En ejecución"
-  ```
-
-### Al Terminar de Trabajar
-
-  **Con Docker:**
-  ```powershell
-  # Detener contenedores (conserva datos)
-  docker compose down
-  ```
-  Esto libera los puertos y detiene Neo4j/API. Los datos permanecen en el volumen Docker.
-  
-  Opcionalmente cierra Docker Desktop si no lo usas para otros proyectos.
-
-  **Sin Docker (Local):**
-  ```powershell
-  # 1. Detener servidor Flask (Ctrl+C en terminal)
-  # 2. Detener Neo4j Desktop: Click "Stop" en la aplicación
-  # 3. Cerrar Neo4j Desktop si deseas
-  ```
-
-### Atajo Rápido (Sin scripts)
-
-  Si prefieres no usar scripts:
-  ```powershell
-  # 1. Activar entorno
-  conda activate biomedicos
-
-  # 2. Arrancar servidor
-  python .\backend\run_waitress.py
-  ```
-
 ## Documentación Completa
 
 Consulte la documentación apropiada según su caso de uso:
 
-  - **[DOCKER.md](docs/DOCKER.md)** - Instalación y uso del proyecto completo con Docker Compose (recomendado)
-  - **[SETUP.md](docs/SETUP.md)** - Instalación local sin Docker (Conda + Neo4j Desktop)
-  - **[USO_DIARIO_SIN_DOCKER.md](docs/USO_DIARIO_SIN_DOCKER.md)** - Guía de uso diario sin Docker
+  - **[DOCKER.md](docs/DOCKER.md)** - Instalación y uso del proyecto con Docker Compose
   - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Arquitectura detallada de microservicios y RabbitMQ
   - **[DATABASE.md](docs/DATABASE.md)** - Gestión de datos Neo4j (CSV, dump, backups)
   - **[API.md](docs/API.md)** - Referencia de endpoints con ejemplos cURL y PowerShell
@@ -287,84 +190,46 @@ Consulte la documentación apropiada según su caso de uso:
 
 ## Variables de Entorno
 
-  Crear archivo `.env` (copiar desde `.env.example`):
-
-  ```ini
-  # Neo4j
-  NEO4J_URI=neo4j://127.0.0.1:7687
-  NEO4J_USER=neo4j
-  NEO4J_PASSWORD=your_password_here
-  
-  # API Principal
-  HOST=0.0.0.0
-  PORT=5000
-  ENVIRONMENT=development
-  
-  # RabbitMQ
-  RABBITMQ_HOST=localhost
-  RABBITMQ_PORT=5672
-  RABBITMQ_USER=guest
-  RABBITMQ_PASSWORD=guest
-  
-  # Microservicios
-  RECOMMENDER_HOST=localhost
-  RECOMMENDER_PORT=5001
-  VALIDATOR_HOST=localhost
-  VALIDATOR_PORT=5002
-  ```
-  **Nota:** No commitear `.env` a Git (contiene credenciales). Usar `.env.example` como template.
-
-## Requisitos
-
-  - Windows/Linux/macOS
-  - Python 3.11+
-  - Miniforge/Conda (recomendado)
-  - Neo4j 5.x ejecutándose
-  - 500MB espacio en disco
-
-## Instalar Manualmente (sin script setup.ps1)
+  El archivo `.env` es **opcional**: sin él se usan los valores por defecto. Para personalizarlo, copia la plantilla y edítala:
 
   ```powershell
-  # Crear y activar entorno
-  conda create -n biomedicos python=3.11 -y
-  conda activate biomedicos
-
-  # Instalar dependencias (binarias, sin compilar)
-  conda install -c conda-forge numpy pandas -y
-  pip install --upgrade pip setuptools wheel
-  pip install -r requirements.txt
-
-  # Arrancar servidor
-  python .\backend\run_waitress.py
+  cp .env.example .env
   ```
 
-## Testing (test api)
+  | Variable | Por defecto | Uso |
+  |----------|-------------|-----|
+  | `NEO4J_USER` | `neo4j` | Usuario de Neo4j |
+  | `NEO4J_PASSWORD` | `password` | Contraseña de Neo4j (mínimo 8 caracteres) |
+  | `FRONTEND_PORT` | `5500` | Puerto de la aplicación web en tu equipo |
+
+  El resto de la configuración (URIs, colas de RabbitMQ y demás puertos) está fijada en `docker-compose.yml`.
+
+  **Notas:**
+  - La contraseña de Neo4j solo se aplica la primera vez que se crea su volumen. Si la cambias después, recrea el volumen con `docker compose down -v` (los datos se vuelven a cargar desde los CSV).
+  - No commitear `.env` a Git (contiene credenciales).
+
+## Tests
 
   ```powershell
-  conda activate biomedicos
-  pip install pytest
-  python -m pytest tests/test_api.py -v
+  # Tests de la API (con el proyecto levantado; usan Neo4j con datos)
+  docker compose run --rm api python -m pytest tests -v
+
+  # Prueba de extremo a extremo del pipeline (PowerShell)
+  .\scripts\test-pipeline.ps1
   ```
 
 ## Gestión de Datos Neo4j
 
-  ### Opción A: Importar desde CSV
-  ```powershell
-  python .\scripts\import_csv.py
-  ```
-  Script automatizado que:
-  1. Lee `data/nodos.csv` y `data/relaciones.csv`
-  2. Conecta a Neo4j usando credenciales de `.env`
-  3. Crea todos los nodos y relaciones en Neo4j
+  Los datos se cargan solos: al levantar el proyecto, el servicio `seed` importa `data/nodos.csv` y `data/relaciones.csv` si Neo4j está vacío. Si ya tiene datos, no hace nada.
 
-  ### Opción B: Restaurar desde Dump
+  Para volver a cargarlos desde cero (por ejemplo, después de editar los CSV):
+
   ```powershell
-  # Neo4j debe estar DETENIDO
-  neo4j-admin database load neo4j --from-path="data\backups" --overwrite-destination=true
-  # Luego iniciar Neo4j
+  docker compose down -v      # Borra el volumen de Neo4j
+  docker compose up -d
   ```
 
-  > **Ver [DATABASE.md](docs/DATABASE.md) para guía completa** sobre cuándo usar cada opción, crear backups, y limpiar datos.
+  > **Ver [DATABASE.md](docs/DATABASE.md)** para copias de seguridad, restauración y consultas de verificación.
 
 ## Desarrollo
 
@@ -379,9 +244,11 @@ Consulte la documentación apropiada según su caso de uso:
       return {'resultado': 'OK'}, 200
   ```
 
+  Después, reconstruir: `docker compose up -d --build`.
+
   ### Modificar frontend
 
-  Editar `frontend/index.html` y `frontend/js/entradas.js`:
+  Editar `frontend/index.html` y `frontend/js/entradas.js`, y recargar el navegador:
 
   ```javascript
   // entradas.js - Añadir función AJAX
@@ -393,44 +260,25 @@ Consulte la documentación apropiada según su caso de uso:
   }
   ```
 
-### Agregar dependencias
+  ### Agregar dependencias
 
-  Editar `requirements.txt`, luego:
+  Editar `requirements.txt` (o `requirements-dev.txt` para herramientas de test) y reconstruir:
   ```powershell
-  pip install -r requirements.txt
+  docker compose up -d --build
   ```
 
 ## Solucionar Problemas
 
-  ### "Port 5000 already in use"
-  ```powershell
-  # Cambiar puerto en .env:
-  # PORT=5001
+  ### Un puerto ya está en uso
+  - **Aplicación web (5500):** cambia `FRONTEND_PORT` en `.env` y vuelve a ejecutar `docker compose up -d`.
+  - **Otros puertos (5000, 5672, 7474, 7687, 15672):** libera el puerto cerrando el programa que lo usa. En macOS, el 5000 lo ocupa el Receptor AirPlay (se desactiva en Ajustes del Sistema → General → AirDrop y Handoff).
 
-  # O matar proceso:
-  Get-Process python | Stop-Process -Force
-  ```
+  ### "Cannot connect to the Docker daemon"
+  Docker Desktop no está abierto. Ábrelo, espera a que indique que está en ejecución y repite el comando.
 
-  ### "Neo4j connection refused" o "Unable to retrieve routing information"
-  - **Verificar Neo4j está corriendo:** Abrir Neo4j Desktop → Start → "Running" ✓
-  - **Verificar web UI:** `http://localhost:7474`
-  - **Validar credenciales en `.env`**
-  - **Si ya estaba corriendo:** Cerrar terminal y abrir una NUEVA
-
-  ### "Terminal no detecta Neo4j"
-  ```
-  IMPORTANTE: Si abriste PowerShell ANTES de iniciar Neo4j,
-  la terminal no detectará que Neo4j está activo.
-  
-  Solución:
-  1. Cerrar TODAS las terminales
-  2. Abrir PowerShell NUEVA
-  3. Ejecutar .\scripts\run.ps1
-  ```
-
-  ### "CORS error" en frontend
-  - Asegurar backend está corriendo
-  - Verificar URL en `entradas.js` es `http://127.0.0.1:5000`
+  ### La página carga pero no muestra tratamientos
+  - Comprueba que todos los servicios estén en marcha: `docker compose ps -a` (`seed` debe aparecer como `Exited (0)`).
+  - Revisa los registros: `docker compose logs api recommender ml-validator`.
 
   > **Ver** [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) **para más soluciones.**
 
