@@ -267,42 +267,7 @@ function guardarIHC() {
     guardarConValidacion('IHC', 'Inmunohistoquímica (IHC)  guardados correctamente');
 }
 
-// Función Enviar (Consultar)
-function enviar() {
-    console.log('Función enviar() llamada');
-    
-    // Validar que haya al menos algunos datos ingresados
-    const edad = document.getElementById('edad').value;
-    const talla = document.getElementById('talla').value;
-    const peso = document.getElementById('peso').value;
-
-    console.log('Edad:', edad, 'Talla:', talla, 'Peso:', peso);
-
-    if (!edad && !talla && !peso) {
-        toastr.error('Por favor completa al menos la información personal', 'Error de validación');
-        return;
-    }
-
-    // Mostrar carga
-    const buttonsContainer = document.getElementById('buttonsContainer');
-    const loadingContainer = document.getElementById('loadingContainer');
-    const treatmentsContainer = document.getElementById('treatmentsContainer');
-
-    console.log('Elementos encontrados:', { buttonsContainer, loadingContainer, treatmentsContainer });
-
-    buttonsContainer.classList.add('hidden');
-    loadingContainer.classList.add('active');
-
-    console.log('Iniciando carga de 3.5 segundos...');
-
-    // Simular carga de 3.5 segundos
-    setTimeout(() => {
-        console.log('Finalizando carga');
-        loadingContainer.classList.remove('active');
-        treatmentsContainer.classList.add('active');
-        toastr.success('Tratamientos generados correctamente', 'Éxito');
-    }, 3500);
-}
+// La consulta (enviar) está en entradas.js
 
 // Toggle Treatment
 function toggleTreatment(num) {

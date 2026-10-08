@@ -322,9 +322,5 @@ def recibir_entradas():
     return jsonify({"mensaje": "Datos recibidos correctamente", "datos": datos}), 201
 
 
-if __name__ == '__main__':
-    start_validation_result_consumer()
-    app.run(host='0.0.0.0', port=8080, debug=False)
-
-
+# El servidor se arranca con backend/run_waitress.py; el consumidor se inicia al importar el módulo.
 start_validation_result_consumer()
