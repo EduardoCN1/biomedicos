@@ -46,6 +46,9 @@ function biomedicos(personal, heredof, estadiat, anteceden){
     this.anteceden=anteceden;
 }
 
+// La API se sirve en el mismo origen que la página: nginx reenvía /api/... al servicio 'api'
+const API_URL = '/api';
+
 const SURGICAL_TREATMENT_NAMES = new Set([
     'surgery',
     'lumpectomy',
@@ -211,7 +214,7 @@ function renderTreatments(data, loadingContainer, treatmentsContainer, buttonsCo
 }
 
 function consultarStageInfoDirecto(T, N, M, surgeryPreference, loadingContainer, treatmentsContainer, buttonsContainer) {
-    const fallbackUrl = `http://127.0.0.1:5000/get_stage_info?t_label=${T}&n_label=${N}&m_label=${M}`;
+    const fallbackUrl = `${API_URL}/get_stage_info?t_label=${T}&n_label=${N}&m_label=${M}`;
 
     $.ajax({
         type: "GET",
@@ -285,7 +288,7 @@ function enviar(){
     buttonsContainer.classList.add('hidden');
     loadingContainer.classList.add('active');
     
-    const submitUrl = "http://127.0.0.1:5000/pipeline/submit";
+    const submitUrl = `${API_URL}/pipeline/submit`;
     const payload = {
         t_label: T,
         n_label: N,
@@ -324,7 +327,7 @@ function enviar(){
                 attempts += 1;
                 $.ajax({
                     type: "GET",
-                    url: `http://127.0.0.1:5000/pipeline/result/${jobId}`,
+                    url: `${API_URL}/pipeline/result/${jobId}`,
                     contentType: "application/json; charset=utf-8",
                     dataType: "json",
                     success: function (resultResp) {

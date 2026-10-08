@@ -1,7 +1,12 @@
 # Test script for TNM Pipeline Architecture
 # Valida que TNM llega al recommender service y regresa resultado
+# Uso: .\scripts\test-pipeline.ps1 [-ApiUrl http://localhost:<API_PORT>]
 
-$API_URL = "http://localhost:5000"
+param(
+    [string]$ApiUrl = "http://localhost:5000"
+)
+
+$API_URL = $ApiUrl
 $TNM_DATA = @{
     job_id = ""
     tnm = @{
