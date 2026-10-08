@@ -2,109 +2,127 @@
 Script para importar datos desde CSV a Neo4j
 Uso: python scripts/import_csv.py
 
-Nota: Solo utilizar para cargar datos iniciales en la base de datos en caso de que esté vacia o quiera cargar nuevos datos.
-Precaución: Si la base de datos ya tiene datos, este ecript puede duplicar datos y se tendrá que hacer una limpieza manual.
+En Docker lo ejecuta automáticamente el servicio 'seed' cada vez que se levanta el proyecto.
+Si la base de datos ya tiene datos no importa nada, así que es seguro ejecutarlo varias veces.
+Para recargar los datos desde cero (borra el volumen de Neo4j): docker compose down -v
 """
 
+import csv
+import json
 import os
 import sys
-import pandas as pd
-from py2neo import Graph, Node, Relationship
+
+from neo4j import GraphDatabase
 
 # Agregar parent directory al path para importar config
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
 
+
+def read_json_column(path):
+    """Lee un CSV de una sola columna cuyas celdas son objetos JSON (formato de exportación de Neo4j)"""
+    with open(path, encoding='utf-8', newline='') as f:
+        reader = csv.reader(f)
+        next(reader)  # Encabezado: "n" o "r"
+        return [json.loads(row[0]) for row in reader if row]
+
+
 def load_data_from_csv(data_dir='data'):
     """Carga datos desde archivos CSV"""
     try:
         nodos_path = os.path.join(data_dir, 'nodos.csv')
         relaciones_path = os.path.join(data_dir, 'relaciones.csv')
-        
+
         if not os.path.exists(nodos_path):
             print(f"[ERROR] Archivo no encontrado: {nodos_path}")
             return None, None
         if not os.path.exists(relaciones_path):
             print(f"[ERROR] Archivo no encontrado: {relaciones_path}")
             return None, None
-        
+
         print(f"[✓] Cargando nodos desde: {nodos_path}")
-        df_nodes = pd.read_csv(nodos_path, converters={'n': eval})
-        
+        nodes = read_json_column(nodos_path)
+
         print(f"[✓] Cargando relaciones desde: {relaciones_path}")
-        df_relations = pd.read_csv(relaciones_path, converters={'r': eval})
-        
-        return df_nodes, df_relations
+        relations = read_json_column(relaciones_path)
+
+        return nodes, relations
     except Exception as e:
         print(f"[ERROR] Al cargar CSV: {e}")
         return None, None
 
-def import_to_neo4j(df_nodes, df_relations):
-    """Importa datos a Neo4j"""
+
+def create_graph(tx, nodes, relations):
+    """Crea nodos y relaciones; el id original se guarda en neo4j_id para enlazar las relaciones"""
+    for node in nodes:
+        labels = ":".join(f"`{label}`" for label in node['labels'])
+        tx.run(
+            f"CREATE (n:{labels}) SET n = $props, n.neo4j_id = $id",
+            props=node['properties'],
+            id=node['id'],
+        )
+
+    for relation in relations:
+        tx.run(
+            f"MATCH (a {{neo4j_id: $start}}), (b {{neo4j_id: $end}}) "
+            f"CREATE (a)-[r:`{relation['type']}`]->(b) SET r = $props",
+            start=relation['start'],
+            end=relation['end'],
+            props=relation['properties'],
+        )
+
+
+def import_to_neo4j(nodes, relations):
+    """Importa datos a Neo4j en una sola transacción: si algo falla no queda nada a medias"""
+    driver = None
     try:
         print(f"\n[→] Conectando a Neo4j: {NEO4J_URI}")
-        graph = Graph(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-        
-        # Test de conexión
-        graph.database.name
+        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        driver.verify_connectivity()
         print(f"[✓] Conexión exitosa a Neo4j")
-        
-        # Diccionario para mapear IDs
-        nodes_dict = {}
-        
-        # Importar nodos
-        print(f"\n[→] Importando {len(df_nodes)} nodos...")
-        for idx, row in df_nodes.iterrows():
-            node_info = row['n']
-            node = Node(*node_info['labels'], **node_info['properties'])
-            node['neo4j_id'] = node_info['id']
-            graph.create(node)
-            nodes_dict[node_info['id']] = node
-            if (idx + 1) % 10 == 0:
-                print(f"   [{idx + 1}/{len(df_nodes)}] nodos importados")
-        
-        print(f"[✓] {len(df_nodes)} nodos importados correctamente")
-        
-        # Importar relaciones
-        print(f"\n[→] Importando {len(df_relations)} relaciones...")
-        for idx, row in df_relations.iterrows():
-            relation_info = row['r']
-            start_node = nodes_dict[relation_info['start']]
-            end_node = nodes_dict[relation_info['end']]
-            relationship = Relationship(start_node, relation_info['type'], end_node, **relation_info['properties'])
-            graph.create(relationship)
-            if (idx + 1) % 10 == 0:
-                print(f"   [{idx + 1}/{len(df_relations)}] relaciones importadas")
-        
-        print(f"[✓] {len(df_relations)} relaciones importadas correctamente")
-        print(f"\n[✓] Datos importados exitosamente a Neo4j")
-        
+
+        with driver.session() as session:
+            existing = session.run("MATCH (n) RETURN count(n) AS total").single()["total"]
+            if existing > 0:
+                print(f"[✓] La base de datos ya tiene {existing} nodos; no se importa nada")
+                return
+
+            print(f"\n[→] Importando {len(nodes)} nodos y {len(relations)} relaciones...")
+            session.execute_write(create_graph, nodes, relations)
+
+        print(f"[✓] Datos importados exitosamente a Neo4j")
+
     except Exception as e:
         print(f"[ERROR] Al importar a Neo4j: {e}")
         sys.exit(1)
+    finally:
+        if driver is not None:
+            driver.close()
+
 
 def main():
     """Función principal"""
     print("=" * 60)
     print("Script de Importación de Datos CSV → Neo4j")
     print("=" * 60)
-    
+
     # Cargar CSV
-    df_nodes, df_relations = load_data_from_csv()
-    if df_nodes is None or df_relations is None:
+    nodes, relations = load_data_from_csv()
+    if nodes is None or relations is None:
         sys.exit(1)
-    
+
     print(f"\nDatos cargados:")
-    print(f"  - Nodos: {len(df_nodes)}")
-    print(f"  - Relaciones: {len(df_relations)}")
-    
+    print(f"  - Nodos: {len(nodes)}")
+    print(f"  - Relaciones: {len(relations)}")
+
     # Importar a Neo4j
-    import_to_neo4j(df_nodes, df_relations)
-    
+    import_to_neo4j(nodes, relations)
+
     print("\n" + "=" * 60)
     print("Importación completada")
     print("=" * 60)
+
 
 if __name__ == '__main__':
     main()
