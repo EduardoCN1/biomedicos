@@ -1,3 +1,11 @@
+# Imagen única del proyecto (Dockerfile): la comparten seed, api, recommender y
+# ml-validator, cada uno con su propio comando de arranque. Solo 'api' la construye;
+# si la construyeran todos, las cuatro construcciones chocarían al nombrarla.
+# pull_policy: never evita que Compose intente descargarla de Docker Hub (no existe allí).
+x-app: &app
+  image: biomedicos-app
+  pull_policy: never
+
 services:
   rabbitmq:
     image: rabbitmq:3-management
@@ -33,7 +41,7 @@ services:
 
   # Carga data/*.csv en Neo4j solo si la base está vacía; termina al acabar.
   seed:
-    build: .
+    <<: *app
     container_name: biomedicos-seed
     command: ["python", "./scripts/import_csv.py"]
     environment:
@@ -46,6 +54,7 @@ services:
     restart: "no"
 
   api:
+    <<: *app
     build: .
     container_name: biomedicos-api
     ports:
@@ -67,7 +76,7 @@ services:
         condition: service_completed_successfully
 
   recommender:
-    build: .
+    <<: *app
     container_name: biomedicos-recommender
     command: ["python", "./services/recommender_service.py"]
     environment:
@@ -86,7 +95,7 @@ services:
         condition: service_completed_successfully
 
   ml-validator:
-    build: .
+    <<: *app
     container_name: biomedicos-ml-validator
     command: ["python", "./services/ml_validator_service.py"]
     environment:
