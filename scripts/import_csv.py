@@ -5,6 +5,9 @@ Uso: python scripts/import_csv.py
 En Docker lo ejecuta automáticamente el servicio 'seed' cada vez que se levanta el proyecto.
 Si la base de datos ya tiene datos no importa nada, así que es seguro ejecutarlo varias veces.
 Para recargar los datos desde cero (borra el volumen de Neo4j): docker compose down -v
+
+Antes de importar valida el formato de los datos (ver validate_nodes); si no es correcto
+no importa nada y termina con error, para que los datos se corrijan en el CSV.
 """
 
 import csv
@@ -51,6 +54,21 @@ def load_data_from_csv(data_dir='data'):
     except Exception as e:
         print(f"[ERROR] Al cargar CSV: {e}")
         return None, None
+
+
+def validate_nodes(nodes):
+    """Devuelve los errores de formato de los nodos (lista vacía si todo es correcto).
+
+    Regla: la propiedad 'label' de cada nodo debe ser texto. Las exportaciones de la
+    ontología a veces la guardan como lista (["Stage IIA"]); en ese caso la API devolvería
+    listas y las búsquedas por nombre en Neo4j no encontrarían el nodo.
+    """
+    errors = []
+    for node in nodes:
+        label = node['properties'].get('label')
+        if not isinstance(label, str) or not label.strip():
+            errors.append(f"nodo id={node['id']}: label={json.dumps(label, ensure_ascii=False)}")
+    return errors
 
 
 def create_graph(tx, nodes, relations):
@@ -115,6 +133,20 @@ def main():
     print(f"\nDatos cargados:")
     print(f"  - Nodos: {len(nodes)}")
     print(f"  - Relaciones: {len(relations)}")
+
+    # Validar formato antes de tocar Neo4j
+    errors = validate_nodes(nodes)
+    if errors:
+        print(f"\n[ERROR] {len(errors)} nodo(s) de data/nodos.csv con 'label' que no es texto:")
+        for error in errors[:10]:
+            print(f"   - {error}")
+        if len(errors) > 10:
+            print(f"   ... y {len(errors) - 10} más")
+        print('\nCorrige el CSV: "label" debe ser texto, por ejemplo "label":"Stage IIA"')
+        print('en lugar de "label":["Stage IIA"]. Ver docs/DATABASE.md (Formato de los datos).')
+        print("No se ha importado nada.")
+        sys.exit(1)
+    print(f"[✓] Formato de los datos correcto")
 
     # Importar a Neo4j
     import_to_neo4j(nodes, relations)
