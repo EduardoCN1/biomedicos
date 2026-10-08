@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pika
 
@@ -28,6 +28,26 @@ def publish(channel, queue_name: str, payload: Dict[str, Any]) -> None:
         body=json.dumps(payload),
         properties=pika.BasicProperties(delivery_mode=2),
     )
+
+
+def report_failure(channel, job_id: Optional[str], error: Exception) -> None:
+    """Publica el fallo en la cola de resultados para que la API marque el trabajo como
+    fallido; sin esto la página esperaba 60 s antes de pasar a modo degradado."""
+    if not job_id:
+        return  # Sin job_id no hay trabajo al que asociar el fallo
+    try:
+        publish(
+            channel,
+            VALIDATION_RESULT_QUEUE,
+            {
+                "job_id": job_id,
+                "status": "failed",
+                "error": f"ml-validator: {error}",
+                "timestamp": int(time.time()),
+            },
+        )
+    except Exception as exc:
+        print(f"[ml-validator] No se pudo publicar el fallo de job_id={job_id}: {exc}")
 
 
 def evaluate_treatment(option: str) -> Dict[str, Any]:
@@ -102,6 +122,7 @@ def run() -> None:
             print(f"[ml-validator] Esperando mensajes en: {VALIDATION_REQUEST_QUEUE}")
 
             def on_message(ch, method, properties, body):
+                job_id = None
                 try:
                     payload = json.loads(body.decode("utf-8"))
                     job_id = payload.get("job_id")
@@ -132,6 +153,7 @@ def run() -> None:
                     print(f"[ml-validator] job_id={job_id} validado y publicado")
                 except Exception as exc:
                     print(f"[ml-validator] Error procesando mensaje: {exc}")
+                    report_failure(ch, job_id, exc)
                 finally:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
 

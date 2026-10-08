@@ -131,14 +131,22 @@ def start_validation_result_consumer():
                         if not job_id:
                             raise ValueError("Resultado sin job_id")
 
-                        with jobs_lock:
-                            jobs_store[job_id] = {
-                                "status": payload.get("status", "completed"),
-                                "updated_at": int(time.time()),
-                                "result": payload,
-                            }
+                        job = {
+                            "status": payload.get("status", "completed"),
+                            "updated_at": int(time.time()),
+                            "result": payload,
+                        }
+                        # Los workers publican status "failed" cuando no pueden procesar el trabajo
+                        if job["status"] == "failed":
+                            job["error"] = payload.get("error", "Error en un microservicio")
 
-                        print(f"✓ Resultado recibido para job_id={job_id}")
+                        with jobs_lock:
+                            jobs_store[job_id] = job
+
+                        if job["status"] == "failed":
+                            print(f"✗ Fallo recibido para job_id={job_id}: {job['error']}")
+                        else:
+                            print(f"✓ Resultado recibido para job_id={job_id}")
                     except Exception as exc:
                         print(f"✗ Error procesando resultado de validación: {exc}")
                     finally:

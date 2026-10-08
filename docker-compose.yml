@@ -88,6 +88,7 @@ services:
       RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/%2F"
       RECOMMENDATION_REQUEST_QUEUE: "tnm.recommendation.request"
       VALIDATION_REQUEST_QUEUE: "tnm.validation.request"
+      VALIDATION_RESULT_QUEUE: "tnm.validation.result"
     depends_on:
       rabbitmq:
         condition: service_healthy

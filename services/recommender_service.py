@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pika
 from neo4j import GraphDatabase
@@ -12,6 +12,7 @@ from backend.config import (
     RABBITMQ_URL,
     RECOMMENDATION_REQUEST_QUEUE,
     VALIDATION_REQUEST_QUEUE,
+    VALIDATION_RESULT_QUEUE,
 )
 
 
@@ -107,6 +108,27 @@ def publish(channel, queue_name: str, payload: Dict[str, Any]) -> None:
     )
 
 
+def report_failure(channel, job_id: Optional[str], error: Exception) -> None:
+    """Publica el fallo directamente en la cola de resultados (saltando el validador) para
+    que la API marque el trabajo como fallido; sin esto la página esperaba 60 s antes de
+    pasar a modo degradado."""
+    if not job_id:
+        return  # Sin job_id no hay trabajo al que asociar el fallo
+    try:
+        publish(
+            channel,
+            VALIDATION_RESULT_QUEUE,
+            {
+                "job_id": job_id,
+                "status": "failed",
+                "error": f"recommender: {error}",
+                "timestamp": int(time.time()),
+            },
+        )
+    except Exception as exc:
+        print(f"[recommender] No se pudo publicar el fallo de job_id={job_id}: {exc}")
+
+
 def run() -> None:
     # Una sola conexión a Neo4j para toda la vida del servicio: no se cierra al
     # reconectar con RabbitMQ (antes se cerraba y se seguía usando cerrada)
@@ -123,6 +145,7 @@ def run() -> None:
             print(f"[recommender] Esperando mensajes en: {RECOMMENDATION_REQUEST_QUEUE}")
 
             def on_message(ch, method, properties, body):
+                job_id = None
                 try:
                     payload = json.loads(body.decode("utf-8"))
                     job_id = payload.get("job_id")
@@ -154,6 +177,7 @@ def run() -> None:
                     print(f"[recommender] job_id={job_id} enviado a validación")
                 except Exception as exc:
                     print(f"[recommender] Error procesando mensaje: {exc}")
+                    report_failure(ch, job_id, exc)
                 finally:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
 
