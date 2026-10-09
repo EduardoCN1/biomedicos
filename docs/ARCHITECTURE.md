@@ -101,6 +101,10 @@ Si el pipeline no completa la consulta (error al enviar, trabajo `failed` o 60 s
 3. `api` y `recommender` arrancan cuando `seed` termina bien; `ml-validator`, cuando RabbitMQ está listo.
 4. `frontend` arranca después de `api`.
 
+### Arranque al encender el equipo
+
+Los servicios tienen `restart: unless-stopped`: cuando Docker arranca (por ejemplo, al encender el equipo) vuelve a levantar los que estaban en marcha, sin ejecutar `docker compose`. En ese caso no se sigue el orden anterior: la API, el recomendador y el validador reintentan la conexión con Neo4j y RabbitMQ hasta que están listos, y `seed` no se ejecuta porque los datos siguen en el volumen. Ver [DOCKER.md](DOCKER.md#arranque-automático-al-encender-el-equipo).
+
 ## Configuración
 
 La configuración se pasa a los contenedores como variables de entorno desde `docker-compose.yml`, y `backend/config.py` las lee con valores por defecto.

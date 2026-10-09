@@ -88,10 +88,13 @@ Ver [DOCKER.md](docs/DOCKER.md) para la guía completa.
 
 ```powershell
 docker compose up -d            # Arrancar (los datos de Neo4j se conservan entre arranques)
-docker compose down             # Detener
+docker compose stop             # Detener (no vuelven a arrancar solos hasta el próximo 'up')
+docker compose down             # Detener y eliminar los contenedores
 docker compose logs -f          # Ver los registros de todos los servicios
 docker compose ps               # Ver el estado de los servicios
 ```
+
+**Arranque automático:** los servicios vuelven a levantarse solos cada vez que Docker arranca, así que no hace falta detenerlos antes de apagar el equipo. Para un equipo que hace de servidor (por ejemplo, en un laboratorio), basta con que Docker arranque al encenderlo. Ver [DOCKER.md](docs/DOCKER.md#arranque-automático-al-encender-el-equipo) para Linux y Windows.
 
 Al aplicar cambios:
 - **Frontend** (`frontend/`): basta con recargar el navegador.
@@ -134,6 +137,10 @@ biomedicos/
 ├── requirements-dev.txt     # Dependencias de los tests (pytest)
 └── README.md
 ```
+
+### Novedades v2.4.1 (Octubre 2026)
+- **Arranque automático**: los servicios vuelven a levantarse solos cuando Docker arranca, por ejemplo al encender el equipo.
+- **Acceso desde la red**: la aplicación web se puede abrir desde otros equipos; la API, Neo4j y RabbitMQ solo responden en el propio servidor.
 
 ### Novedades v2.4 (Octubre 2026)
 - **Instalación solo con Docker**: un comando levanta todo; los datos se validan y se cargan automáticamente.
@@ -302,5 +309,5 @@ Proyecto de práctica sobre arquitectura de software biomedico.
 **No apto para uso clínico:** el validador de tratamientos es simulado y los datos no constituyen una guía de estadificación completa.
 
 ---
-**Última actualización:** 2026-10-07
-**Versión:** 2.4 (Instalación con Docker + pipeline más robusto)
+**Última actualización:** 2026-10-09
+**Versión:** 2.4.1 (Arranque automático + acceso desde la red)

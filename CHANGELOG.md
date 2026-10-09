@@ -1,5 +1,20 @@
 # Changelog
 
+## Versión 2.4.1 - Arranque Automático y Acceso desde la Red (2026-10-09)
+
+- **Arranque automático:** `rabbitmq`, `neo4j`, `api`, `recommender`, `ml-validator` y `frontend` tienen la política `restart: unless-stopped`; cuando Docker arranca (por ejemplo, al encender el equipo) los vuelve a levantar sin ejecutar `docker compose`. `DOCKER.md` explica cómo configurar un servidor para que Docker arranque con el equipo en Linux y en Windows, incluido el ajuste del rango de puertos dinámicos de Windows, que puede reservar puertos del proyecto al arrancar.
+- **Solo la aplicación web es accesible desde la red:** la API, Neo4j y RabbitMQ se publican en `127.0.0.1` (solo desde el propio servidor), y `/api/pipeline/debug`, que muestra los datos de todas las consultas, está bloqueado en el proxy.
+- **Documentación:** para abrir la aplicación desde otro equipo se usa la IP del servidor; nuevos problemas en `TROUBLESHOOTING.md` (acceso desde otro equipo, arranque tras encender y puertos reservados en Windows).
+
+### Actualización desde v2.4
+
+```powershell
+git pull
+docker compose up -d      # Recrea los contenedores con la nueva política de reinicio y los nuevos puertos
+```
+
+---
+
 ## Versión 2.4 - Instalación con Docker y Pipeline más Robusto (2026-10-07)
 
 ### Instalación
@@ -17,7 +32,6 @@
 ### Funcionamiento
 
 - **Proxy `/api` en nginx:** la página llama a la API en su mismo origen, sin URL ni puerto fijos ni CORS, y se puede abrir desde otros equipos de la red. El puerto publicado de la API es configurable (`API_PORT`).
-- **Solo la aplicación web es accesible desde la red:** la API, Neo4j y RabbitMQ se publican en `127.0.0.1` (solo desde el propio servidor), y `/api/pipeline/debug`, que muestra los datos de todas las consultas, está bloqueado en el proxy.
 - **Reintentos con Neo4j:** la API y el recomendador usan transacciones gestionadas; la primera consulta tras reiniciar Neo4j ya no falla con un 500.
 - **El recomendador ya no cierra su conexión a Neo4j** al reconectar con RabbitMQ.
 - **Fallos visibles:** si un microservicio no puede procesar un trabajo, lo avisa a la API (`status: "failed"` con el motivo) y la página muestra el error sin esperar 60 s.
@@ -503,6 +517,6 @@ Ver el [README](README.md#instalación).
 
 ---
 
-**Última actualización:** 2026-10-07
-**Versión actual:** 2.4
+**Última actualización:** 2026-10-09
+**Versión actual:** 2.4.1
 **Status:** Proyecto de práctica en desarrollo. El validador es simulado: no apto para uso clínico.

@@ -100,6 +100,8 @@ flowchart TB
     API -->|iniciado| Frontend
 ```
 
+Este orden se aplica con `docker compose up`. Cuando Docker arranca por su cuenta (al encender el equipo), levanta los servicios sin orden y estos reintentan la conexión hasta que Neo4j y RabbitMQ están listos; `seed` no se ejecuta.
+
 ## Modelo de Datos
 
 Solo los nodos y relaciones que usan las consultas (ver [MICROSERVICIOS.md](MICROSERVICIOS.md#modelo-de-datos-en-neo4j)).
