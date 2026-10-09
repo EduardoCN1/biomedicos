@@ -128,7 +128,7 @@ docker compose logs api recommender ml-validator
 
 ### 9. La página se ve sin estilos o no responde al pulsar botones
 
-**Causa:** No se pudieron cargar Bootstrap, jQuery o Toastr, que se descargan desde CDN.
+**Causa:** No se pudieron cargar Bootstrap, jQuery, Toastr o Font Awesome (los iconos), que se descargan desde CDN.
 
 **Solución:** Comprobar la conexión a internet y, en la pestaña **Network** de las herramientas de desarrollo (F12), que no haya errores al cargar `cdnjs.cloudflare.com` o `code.jquery.com` (pueden estar bloqueados por un proxy o un bloqueador de contenido).
 

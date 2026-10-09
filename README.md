@@ -3,7 +3,7 @@
 Aplicación Flask+Neo4j para consultoría de estadios oncológicos (TNM), pruebas recomendadas y opciones de tratamiento para cáncer de mama.
 
 ## Resumen Rápido
-__________________________________________________________________________
+
 | Aspecto          |    Detalle                                           |
 |------------------|------------------------------------------------------|
 | **Stack**        | Flask 3.0 + Neo4j 5 + RabbitMQ + nginx + Bootstrap 5 |
@@ -56,7 +56,7 @@ El proyecto se ejecuta completo con Docker Compose: no hace falta instalar Pytho
 - [Docker Desktop](https://www.docker.com/products/docker-desktop) (en Windows usa WSL2), con al menos 4 GB de RAM asignados.
 - Git.
 - Unos 2 GB de disco para las imágenes.
-- Conexión a internet: la primera vez se descargan las imágenes, y la página carga Bootstrap, jQuery y Toastr desde CDN.
+- Conexión a internet: la primera vez se descargan las imágenes, y la página carga Bootstrap, jQuery, Toastr y Font Awesome desde CDN.
 
 **Pasos:**
 ```powershell
@@ -275,6 +275,7 @@ Consulte la documentación apropiada según su caso de uso:
   Docker Desktop no está abierto. Ábrelo, espera a que indique que está en ejecución y repite el comando.
 
   ### La página carga pero no muestra tratamientos
+  - Si aparece el aviso **«No se pudo completar la evaluación»**, el pipeline no terminó la consulta y la página no muestra tratamientos sin evaluar (ver [problema 7 de TROUBLESHOOTING](docs/TROUBLESHOOTING.md#7-aviso-no-se-pudo-completar-la-evaluación-en-la-página)).
   - Comprueba que todos los servicios estén en marcha: `docker compose ps -a` (`seed` debe aparecer como `Exited (0)`).
   - Revisa los registros: `docker compose logs api recommender ml-validator`.
 

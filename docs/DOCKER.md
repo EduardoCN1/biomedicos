@@ -17,7 +17,7 @@ Esta guía describe cómo instalar y ejecutar el proyecto completo con Docker Co
    - Al menos 4 GB de RAM asignados a Docker
    - Unos 2 GB de disco para las imágenes
    - Puertos libres: 5000, 5500, 5672, 7474, 7687, 15672 (el 5000 y el 5500 se pueden cambiar, ver [Variables de entorno](#paso-2-opcional-crear-el-archivo-env))
-   - Conexión a internet: la primera vez se descargan las imágenes, y la página carga Bootstrap, jQuery y Toastr desde CDN
+   - Conexión a internet: la primera vez se descargan las imágenes, y la página carga Bootstrap, jQuery, Toastr y Font Awesome desde CDN
 
 ## Servicios Incluidos
 
