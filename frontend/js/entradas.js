@@ -46,6 +46,9 @@ function biomedicos(personal, heredof, estadiat, anteceden){
     this.anteceden=anteceden;
 }
 
+// La API se sirve en el mismo origen que la página: nginx reenvía /api/... al servicio 'api'
+const API_URL = '/api';
+
 const SURGICAL_TREATMENT_NAMES = new Set([
     'surgery',
     'lumpectomy',
@@ -210,25 +213,12 @@ function renderTreatments(data, loadingContainer, treatmentsContainer, buttonsCo
     }
 }
 
-function consultarStageInfoDirecto(T, N, M, surgeryPreference, loadingContainer, treatmentsContainer, buttonsContainer) {
-    const fallbackUrl = `http://127.0.0.1:5000/get_stage_info?t_label=${T}&n_label=${N}&m_label=${M}`;
-
-    $.ajax({
-        type: "GET",
-        url: fallbackUrl,
-        contentType: "application/json; charset=utf-8",
-        dataType: "json",
-        success: function (data) {
-            const filtered = filterRecommendationsBySurgeryPreference(data, surgeryPreference);
-            renderTreatments(filtered, loadingContainer, treatmentsContainer, buttonsContainer);
-            toastr.info('Se usó flujo directo (sin validación ML)', 'Modo degradado');
-        },
-        error: function () {
-            loadingContainer.classList.remove('active');
-            buttonsContainer.classList.remove('hidden');
-            toastr.error('Error al consultar tratamientos. Verifica servicios activos.', 'Error');
-        }
-    });
+// Si el pipeline no completa la evaluación no se muestran tratamientos: solo se presentan
+// recomendaciones que hayan pasado por todos los servicios (recomendador y validador).
+function mostrarErrorEvaluacion(motivo, loadingContainer, buttonsContainer) {
+    loadingContainer.classList.remove('active');
+    buttonsContainer.classList.remove('hidden');
+    toastr.error(`${motivo} Inténtalo de nuevo en unos momentos.`, 'No se pudo completar la evaluación', { timeOut: 10000 });
 }
 
 function enviar(){
@@ -285,7 +275,7 @@ function enviar(){
     buttonsContainer.classList.add('hidden');
     loadingContainer.classList.add('active');
     
-    const submitUrl = "http://127.0.0.1:5000/pipeline/submit";
+    const submitUrl = `${API_URL}/pipeline/submit`;
     const payload = {
         t_label: T,
         n_label: N,
@@ -312,7 +302,7 @@ function enviar(){
         success: function (submitResp) {
             const jobId = submitResp.job_id;
             if (!jobId) {
-                consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
+                mostrarErrorEvaluacion('Respuesta inesperada del servidor.', loadingContainer, buttonsContainer);
                 return;
             }
 
@@ -324,7 +314,7 @@ function enviar(){
                 attempts += 1;
                 $.ajax({
                     type: "GET",
-                    url: `http://127.0.0.1:5000/pipeline/result/${jobId}`,
+                    url: `${API_URL}/pipeline/result/${jobId}`,
                     contentType: "application/json; charset=utf-8",
                     dataType: "json",
                     success: function (resultResp) {
@@ -337,23 +327,24 @@ function enviar(){
                             renderTreatments(filtered, loadingContainer, treatmentsContainer, buttonsContainer);
                         } else if (status === 'failed') {
                             clearInterval(poller);
-                            consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
+                            console.error('Evaluación fallida:', resultResp.error);
+                            mostrarErrorEvaluacion('Uno de los servicios de evaluación falló al procesar la consulta.', loadingContainer, buttonsContainer);
                         } else if (attempts >= maxAttempts) {
                             clearInterval(poller);
-                            consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
+                            mostrarErrorEvaluacion('El servicio de evaluación no respondió a tiempo.', loadingContainer, buttonsContainer);
                         }
                     },
                     error: function () {
                         if (attempts >= maxAttempts) {
                             clearInterval(poller);
-                            consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
+                            mostrarErrorEvaluacion('El servicio de evaluación no respondió a tiempo.', loadingContainer, buttonsContainer);
                         }
                     }
                 });
             }, pollIntervalMs);
         },
         error: function () {
-            consultarStageInfoDirecto(T, N, M, preferencia, loadingContainer, treatmentsContainer, buttonsContainer);
+            mostrarErrorEvaluacion('El servicio de evaluación no está disponible.', loadingContainer, buttonsContainer);
         }
     });
 }

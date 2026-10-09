@@ -1,7 +1,12 @@
 # Test script for TNM Pipeline Architecture
 # Valida que TNM llega al recommender service y regresa resultado
+# Uso: .\scripts\test-pipeline.ps1 [-ApiUrl http://localhost:<API_PORT>]
 
-$API_URL = "http://localhost:5000"
+param(
+    [string]$ApiUrl = "http://localhost:5000"
+)
+
+$API_URL = $ApiUrl
 $TNM_DATA = @{
     job_id = ""
     tnm = @{
@@ -21,7 +26,7 @@ Write-Host "[1/5] Verificando salud del pipeline..." -ForegroundColor Yellow
 try {
     $health = Invoke-RestMethod -Uri "$API_URL/pipeline/health" -Method GET
     Write-Host "✓ Pipeline health:" -ForegroundColor Green
-    $health | ConvertTo-Json | Write-Host
+    $health | ConvertTo-Json -Depth 10 | Write-Host
 } catch {
     Write-Host "✗ Error verificando health:" -ForegroundColor Red
     Write-Host $_.Exception.Message
@@ -67,7 +72,7 @@ try {
     Write-Host "  Total jobs: $($debug.total_jobs)" -ForegroundColor Cyan
     if ($debug.jobs.$JOB_ID) {
         Write-Host "  Job ${JOB_ID}:" -ForegroundColor Cyan
-        $debug.jobs.$JOB_ID | ConvertTo-Json | ForEach-Object { Write-Host "    $_" }
+        $debug.jobs.$JOB_ID | ConvertTo-Json -Depth 10 | ForEach-Object { Write-Host "    $_" }
     }
 } catch {
     Write-Host "⚠ No se pudo acceder a debug:" -ForegroundColor Yellow
@@ -92,12 +97,12 @@ while ($attempts -lt $max_attempts) {
             Write-Host ""
             Write-Host "✓ RESULTADO RECIBIDO - TNM PROCESADO CORRECTAMENTE:" -ForegroundColor Green
             Write-Host "═════════════════════════════════════════════════════" -ForegroundColor Green
-            $result.result | ConvertTo-Json | Write-Host
+            $result.result | ConvertTo-Json -Depth 10 | Write-Host
             Write-Host "═════════════════════════════════════════════════════" -ForegroundColor Green
             break
         } elseif ($result.status -eq "failed") {
             Write-Host "✗ Job falló:" -ForegroundColor Red
-            $result | ConvertTo-Json | Write-Host
+            $result | ConvertTo-Json -Depth 10 | Write-Host
             break
         }
     } catch {

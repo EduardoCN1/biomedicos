@@ -1,178 +1,122 @@
 # Gestión de Base de Datos Neo4j
 
-Esta guía explica cómo poblar y respaldar tu base de datos Neo4j.
+Esta guía explica cómo se cargan los datos en Neo4j y cómo recargarlos, respaldarlos y restaurarlos con Docker.
 
-##  Dos Formas de Poblar Neo4j
+Los comandos están escritos para PowerShell. En Git Bash, los que contienen rutas del contenedor (`/backups`) necesitan el prefijo `MSYS_NO_PATHCONV=1` (ver [Troubleshooting](#troubleshooting)).
 
-Tienes **dos opciones** para cargar datos en Neo4j. **No necesitas hacer ambas**, elige la que aplique:
+## Carga Automática de Datos
 
-### Opción A: Importar desde CSV (Desarrollo)
+Los datos de origen son `data/nodos.csv` y `data/relaciones.csv` (134 nodos y 310 relaciones), versionados en Git.
 
-**Cuándo usar:**
--  Primera instalación y solo tienes archivos CSV
--  Actualizaste los CSVs con nuevos datos
--  Estás desarrollando y modificando datos frecuentemente
+Cada vez que se levanta el proyecto, el servicio `seed` ejecuta `scripts/import_csv.py`:
+- **Primero valida el formato** de los datos (ver [Formato de los Datos](#formato-de-los-datos)). Si no es correcto, no importa nada y termina con error; `api` y `recommender` no arrancan hasta que se corrija el CSV.
+- **Si Neo4j está vacío**, importa todos los nodos y relaciones en una sola transacción (si algo falla, no deja datos a medias).
+- **Si Neo4j ya tiene datos**, no hace nada. Por eso es seguro levantar el proyecto tantas veces como se quiera: los datos no se duplican.
 
-**Cómo hacerlo:**
-```powershell
-# Asegúrate que Neo4j está corriendo
-python .\scripts\import_csv.py
+Los datos se guardan en el volumen de Docker `biomedicos_neo4j_data` y se conservan entre `docker compose down` y `docker compose up`.
+
+## Formato de los Datos
+
+Los CSV son la **fuente de verdad** de los datos: lo que contienen es exactamente lo que se carga en Neo4j, sin transformaciones. Si se corrige o amplía algún dato, se hace en el CSV.
+
+Ambos archivos tienen una sola columna (encabezado `"n"` en nodos y `"r"` en relaciones). Cada fila es un objeto JSON, con las comillas dobles escapadas según el formato CSV (`""`), tal como los exporta Neo4j:
+
+```
+"n"
+"{""id"":1,""labels"":[""Class"",""Sub_N_Stage_Finding""],""properties"":{""label"":""N1mi"", ...}}"
 ```
 
-**¿Qué hace?**
-- Lee `data/nodos.csv` y `data/relaciones.csv`
-- Crea nodos y relaciones en Neo4j
-- Tarda 1-5 minutos dependiendo del tamaño
+**Nodos** (`data/nodos.csv`):
 
----
+| Campo | Contenido |
+|-------|-----------|
+| `id` | Identificador numérico único; las relaciones lo usan para enlazar nodos |
+| `labels` | Lista de tipos del nodo en Neo4j (por ejemplo `["Class", "T_Stage_Finding"]`) |
+| `properties` | Propiedades del nodo. `label` es su nombre (`"T1"`, `"Stage IIA"`, `"Surgery"`…) |
 
-### Opción B: Restaurar desde Dump (Producción/Respaldo)
+**Relaciones** (`data/relaciones.csv`):
 
-**Cuándo usar:**
--  Tienes un archivo `.dump` de respaldo
--  Quieres restaurar datos de producción
--  Otro desarrollador te compartió un dump
--  Más rápido que importar CSVs
+| Campo | Contenido |
+|-------|-----------|
+| `id` | Identificador de la relación |
+| `type` | Tipo de relación (`Has_Stage`, `Has_Recommended_Test`, `Has_Treatment_Option`…) |
+| `start`, `end` | `id` de los nodos de origen y destino |
+| `properties` | Propiedades de la relación (hoy, siempre vacías) |
 
-**Cómo hacerlo:**
+**Regla que valida `seed`:** la propiedad `label` de cada nodo debe ser **texto**, no una lista. Las exportaciones de la ontología a veces la guardan como lista de un elemento (`"label":["Stage IIA"]`); en ese caso la API devolvería listas y las búsquedas por nombre en Neo4j no encontrarían el nodo. Hay que corregirlo en el CSV (`"label":"Stage IIA"`) antes de cargarlo.
 
-#### Paso 1: Detener Neo4j
-```powershell
-# En Neo4j Desktop: Click "Stop"
-# O en terminal:
-neo4j stop
-```
+Ver [MICROSERVICIOS.md](MICROSERVICIOS.md#modelo-de-datos-en-neo4j) para qué nodos y relaciones usan las consultas.
 
-#### Paso 2: Restaurar el dump
-```powershell
-# Si usas Neo4j Desktop
-# Buscar la ruta de instalación (ej: C:\Users\...\Neo4jDesktop\...)
-cd "C:\...\Neo4jDesktop\relate-data\dbmss\dbms-xxx\bin"
+## Recargar los Datos desde los CSV
 
-# Restaurar dump
-neo4j-admin database load neo4j --from-path="D:\Proyecto_Practica\biomedicos\data\backups" --overwrite-destination=true
-
-# Reemplaza 'neo4j' con tu nombre de base datos si es diferente
-```
-
-#### Paso 3: Reiniciar Neo4j
-```powershell
-# En Neo4j Desktop: Click "Start"
-neo4j start
-```
-
----
-
-##  Crear un Dump (Backup)
-
-### Cuándo crear backups:
-
-- Antes de actualizaciones importantes
-- Después de importar datos nuevos
-- Semanalmente (producción)
-- Antes de limpiar la base de datos
-
-### Cómo crear un dump:
-
-#### Opción 1: Desde Neo4j Desktop
-
-1. Detener la instancia (Stop)
-2. Click en los 3 puntos (•••) → "Create Dump"
-3. Elegir ubicación (recomendado: `data/backups/`)
-
-#### Opción 2: Desde línea de comandos
+Por ejemplo, después de editar los CSV:
 
 ```powershell
-# Detener Neo4j primero
-neo4j stop
-
-# Crear dump
-cd "C:\...\Neo4jDesktop\relate-data\dbmss\dbms-xxx\bin"
-neo4j-admin database dump neo4j --to-path="D:\Proyecto_Practica\biomedicos\data\backups"
-
-# Esto crea: biomedicos\data\backups\neo4j.dump
-
-# Renombrar con fecha (opcional)
-Rename-Item "D:\Proyecto_Practica\biomedicos\data\backups\neo4j.dump" "biomedicos-2026-02-13.dump"
-
-# Reiniciar Neo4j
-neo4j start
+docker compose down -v      # Borra el volumen de Neo4j
+docker compose up -d        # seed vuelve a importar los CSV
 ```
 
----
+**Advertencia:** `down -v` borra todos los datos de Neo4j, incluidos los cambios hechos a mano desde Neo4j Browser. Si se quieren conservar, crear antes una copia de seguridad.
 
-##  Flujo Completo: Primera Instalación
-
-### Escenario 1: Solo tienes CSVs
+Para ejecutar la importación manualmente (solo importa si Neo4j está vacío):
 
 ```powershell
-# 1. Iniciar Neo4j Desktop
-# 2. Abrir terminal
-python .\scripts\import_csv.py
-# 3. Listo, datos cargados
+docker compose run --rm seed
 ```
 
-### Escenario 2: Tienes un dump
+## Crear una Copia de Seguridad (Dump)
+
+Neo4j Community solo permite hacer el dump con la base de datos **detenida**; con Neo4j en marcha falla con `Dump failed for databases: 'neo4j'`.
 
 ```powershell
-# 1. Asegurarse que Neo4j está DETENIDO
-# 2. Restaurar dump
-neo4j-admin database load neo4j --from-path="...\data\backups" --overwrite-destination=true
-# 3. Iniciar Neo4j Desktop
-# 4. Listo, datos restaurados
+docker compose stop neo4j
+docker compose run --rm --no-deps neo4j neo4j-admin database dump neo4j --to-path=/backups
+docker compose start neo4j
 ```
 
-### Escenario 3: Ya tienes datos en Neo4j
+El archivo se guarda en el equipo como `data/backups/neo4j.dump` (la carpeta está montada en el contenedor como `/backups`). Si ya existe un `neo4j.dump`, renombrarlo antes para conservarlo:
 
 ```powershell
-# ¡No hagas nada!
-# Solo inicia Neo4j Desktop y comienza a trabajar
+Rename-Item data/backups/neo4j.dump "neo4j-$(Get-Date -Format 'yyyy-MM-dd').dump"
 ```
 
----
+Los archivos `.dump` no se suben a Git (están en `.gitignore`).
 
-##  Limpiar Base de Datos (Cuidado)
+## Restaurar una Copia de Seguridad
 
-Si quieres **borrar todos los datos** y empezar de cero:
+1. Colocar el archivo en `data/backups/` con el nombre `neo4j.dump`.
+2. Ejecutar:
 
-### Opción 1: Desde Neo4j Browser (Web UI)
+```powershell
+docker compose stop neo4j
+docker compose run --rm --no-deps neo4j neo4j-admin database load neo4j --from-path=/backups --overwrite-destination=true
+docker compose start neo4j
+```
+
+Tras restaurar, `seed` no modifica nada porque la base ya tiene datos.
+
+**Nota:** un dump creado con una versión de Neo4j más nueva que la 5 (por ejemplo, las 2025.x) no se puede cargar en Neo4j 5.
+
+## Borrar los Datos sin Borrar el Volumen
+
+Desde Neo4j Browser (http://localhost:7474):
 
 ```cypher
-// Abrir http://localhost:7474/
-// En el query editor, ejecutar:
-
 MATCH (n) DETACH DELETE n;
 ```
 
-### Opción 2: Borrar archivos de datos
+Para volver a cargar los CSV después: `docker compose run --rm seed`.
 
-```powershell
-#  CUIDADO: Esto borra TODOS los datos permanentemente
+## Verificar los Datos
 
-# 1. Detener Neo4j
-neo4j stop
-
-# 2. Borrar carpeta de datos
-# En Neo4j Desktop, buscar la ruta de datos
-# Ejemplo: C:\Users\...\Neo4jDesktop\relate-data\dbmss\dbms-xxx\data\databases\neo4j
-Remove-Item -Recurse -Force "C:\...\data\databases\neo4j"
-
-# 3. Reiniciar Neo4j
-neo4j start
-```
-
----
-
-##  Verificar Datos en Neo4j
-
-### Desde Neo4j Browser (http://localhost:7474/)
+### Desde Neo4j Browser (http://localhost:7474)
 
 ```cypher
-// Contar nodos
-MATCH (n) RETURN count(n) as total_nodos;
+// Contar nodos (esperado: 134)
+MATCH (n) RETURN count(n) AS total_nodos;
 
-// Contar relaciones
-MATCH ()-[r]->() RETURN count(r) as total_relaciones;
+// Contar relaciones (esperado: 310)
+MATCH ()-[r]->() RETURN count(r) AS total_relaciones;
 
 // Ver tipos de nodos
 MATCH (n) RETURN DISTINCT labels(n), count(*);
@@ -181,111 +125,49 @@ MATCH (n) RETURN DISTINCT labels(n), count(*);
 MATCH (n) RETURN n LIMIT 25;
 ```
 
+### Desde la Terminal
+
+```powershell
+# Conteo de nodos sin abrir el navegador
+docker compose exec neo4j sh -c 'cypher-shell -u "${NEO4J_AUTH%%/*}" -p "${NEO4J_AUTH#*/}" "MATCH (n) RETURN count(n)"'
+```
+
 ### Desde la API
 
 ```powershell
-# Ver etiquetas T disponibles
+# Etiquetas T disponibles
 Invoke-RestMethod http://localhost:5000/labels/t
 
-# Ver etiquetas N disponibles
-Invoke-RestMethod http://localhost:5000/labels/n
-
-# Test de datos
+# Consulta completa de un TNM
 Invoke-RestMethod "http://localhost:5000/get_stage_info?t_label=T2&n_label=N1&m_label=M0"
 ```
 
----
-
-##  Decisión Rápida: ¿Qué Método Usar?
-
-### ¿Tienes un archivo `.dump`?
--  SÍ → Usa **Opción B** (Restaurar desde dump)
--  NO → Continúa...
-
-### ¿Tienes archivos CSV (`data/nodos.csv`, `data/relaciones.csv`)?
--  SÍ → Usa **Opción A** (Importar desde CSV)
--  NO → Necesitas obtener datos (contacta al equipo)
-
-### ¿Ya tienes datos cargados en Neo4j?
--  SÍ → ¡No hagas nada! Solo úsalo
--  NO → Usa Opción A o B según lo que tengas
-
----
-
-##  Mejores Prácticas
-
-### 1. Backups Regulares
-```powershell
-# Crear backup semanal
-neo4j-admin database dump neo4j --to-path="...\backups\backup-$(Get-Date -Format 'yyyy-MM-dd').dump"
-```
-
-### 2. Versionado de Dumps
-```
-data/backups/
-├── biomedicos-2026-02-01.dump  # Versión inicial
-├── biomedicos-2026-02-07.dump  # Después de agregar datos
-├── biomedicos-2026-02-13.dump  # Versión actual
-└── LATEST.dump                 # Symlink o copia del último
-```
-
-### 3. NO Duplicar Datos
-```
- Si importas CSV dos veces, duplicarás los datos
- Si restauras dump sobre datos existentes, usa --overwrite-destination=true
-```
-
-### 4. Verificar Siempre
-```powershell
-# Después de cualquier operación, verificar:
-Invoke-RestMethod http://localhost:5000/labels/t
-```
-
----
-
 ## Troubleshooting
 
-### Error: "Database 'neo4j' already exists"
+### Error: "Dump failed for databases: 'neo4j'"
 
-Al restaurar dump:
-```powershell
-# Agregar flag --overwrite-destination=true
-neo4j-admin database load neo4j --from-path="..." --overwrite-destination=true
+Neo4j está en marcha. Detenerlo antes con `docker compose stop neo4j`.
+
+### Error: "C:/Program Files/Git/backups is not an existing directory"
+
+Git Bash convierte las rutas que empiezan por `/` en rutas de Windows. Usar PowerShell, o anteponer `MSYS_NO_PATHCONV=1` al comando:
+
+```bash
+MSYS_NO_PATHCONV=1 docker compose run --rm --no-deps neo4j neo4j-admin database dump neo4j --to-path=/backups
 ```
 
-### Error: "Cannot load database while running"
+### La primera consulta tras reiniciar Neo4j tarda unos segundos
 
-```powershell
-# Primero detener Neo4j
-neo4j stop
-# Luego intentar de nuevo
-```
+Es normal: la API y el recomendador reintentan automáticamente mientras restablecen la conexión con Neo4j, y después responden con normalidad.
 
-### CSV Import duplica datos
+### `seed` falla con "'label' que no es texto"
 
-```cypher
-// Limpiar antes de reimportar
-MATCH (n) DETACH DELETE n;
-```
+Algún nodo de `data/nodos.csv` no cumple el [formato de los datos](#formato-de-los-datos). El mensaje enumera los nodos afectados (`nodo id=6: label=["Stage IB"]`); corregirlos en el CSV (`"label":"Stage IB"`) y volver a ejecutar `docker compose up -d`.
 
-Luego ejecutar `import_csv.py`
+### Los datos están duplicados
+
+Puede ocurrir con bases importadas con la versión antigua del script, que no comprobaba si ya había datos. Solución: `docker compose down -v` y `docker compose up -d`.
 
 ---
 
-##  Estructura de Backups Recomendada
-
-```
-data/backups/
-├── dumps/
-│   ├── biomedicos-YYYY-MM-DD.dump
-│   └── LATEST.dump
-├── csv/
-│   ├── nodos-backup.csv
-│   └── relaciones-backup.csv
-└── README.txt  # Notas sobre cada backup
-```
-
----
-
-
-**Última actualización:** 2026-02-13
+**Última actualización:** 2026-10-07

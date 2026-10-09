@@ -1,5 +1,13 @@
 # Reestructuración del Frontend
 
+> **Documento histórico (v2.2, marzo 2026).** Describe la reestructuración tal como se hizo entonces y no se actualiza. Desde esa versión:
+> - `frontend/js/config.js` se eliminó (estaba vacío y no se cargaba).
+> - La función `enviar()` de `main.js` (una simulación de 3,5 s) se eliminó; la consulta real está en `entradas.js`.
+> - `entradas.js` sí se modificó: envía la consulta al pipeline de microservicios y llama a la API a través de `/api`.
+> - Bootstrap se carga desde CDN y la página la sirve nginx en Docker (http://localhost:5500).
+>
+> Para el estado actual, ver [ARCHITECTURE.md](ARCHITECTURE.md) y [MICROSERVICIOS.md](MICROSERVICIOS.md).
+
 ## Resumen de Cambios
 
 Se ha reestructurado el archivo `frontend/index.html` para mejorar la organización y mantenibilidad del código, separando el CSS inline, los modales y el JavaScript en archivos individuales.

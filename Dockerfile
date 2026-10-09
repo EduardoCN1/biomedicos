@@ -2,13 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# requirements-dev.txt (pytest) se incluye para poder ejecutar los tests dentro del contenedor
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
 
 COPY backend ./backend
 COPY services ./services
 COPY scripts ./scripts
 COPY data ./data
+COPY tests ./tests
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app:$PYTHONPATH

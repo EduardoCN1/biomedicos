@@ -42,16 +42,32 @@ class Neo4JDatabase:
               (target)-[:Has_Treatment_Option]->(treatment)
         RETURN target AS Stage, collect(distinct test.label) AS RecommendedTests, collect(distinct treatment.label) AS TreatmentOptions
         """
-        stages = []
-        with self.driver.session() as session:
-            result = session.run(query, t_label=t_label, n_label=n_label, m_label=m_label)
-            for record in result:
-                stages.append({
+
+        def read_stages(tx):
+            result = tx.run(query, t_label=t_label, n_label=n_label, m_label=m_label)
+            return [
+                {
                     "Stage": record["Stage"]["label"],
                     "RecommendedTests": record["RecommendedTests"],
                     "TreatmentOptions": record["TreatmentOptions"]
-                })
+                }
+                for record in result
+            ]
+
+        # execute_read reintenta ante errores transitorios, como la primera consulta
+        # tras reiniciar Neo4j (con session.run esa consulta fallaba con un 500)
+        with self.driver.session() as session:
+            stages = session.execute_read(read_stages)
         return stages if stages else None
+
+    def get_labels(self, node_label):
+        query = f"MATCH (n:{node_label}) RETURN DISTINCT n.label AS label LIMIT 100"
+
+        def read_labels(tx):
+            return [record["label"] for record in tx.run(query)]
+
+        with self.driver.session() as session:
+            return session.execute_read(read_labels)
 
 
 # Conectar a base de datos usando configuración
@@ -115,14 +131,22 @@ def start_validation_result_consumer():
                         if not job_id:
                             raise ValueError("Resultado sin job_id")
 
-                        with jobs_lock:
-                            jobs_store[job_id] = {
-                                "status": payload.get("status", "completed"),
-                                "updated_at": int(time.time()),
-                                "result": payload,
-                            }
+                        job = {
+                            "status": payload.get("status", "completed"),
+                            "updated_at": int(time.time()),
+                            "result": payload,
+                        }
+                        # Los workers publican status "failed" cuando no pueden procesar el trabajo
+                        if job["status"] == "failed":
+                            job["error"] = payload.get("error", "Error en un microservicio")
 
-                        print(f"✓ Resultado recibido para job_id={job_id}")
+                        with jobs_lock:
+                            jobs_store[job_id] = job
+
+                        if job["status"] == "failed":
+                            print(f"✗ Fallo recibido para job_id={job_id}: {job['error']}")
+                        else:
+                            print(f"✓ Resultado recibido para job_id={job_id}")
                     except Exception as exc:
                         print(f"✗ Error procesando resultado de validación: {exc}")
                     finally:
@@ -265,37 +289,19 @@ def pipeline_health():
 @app.route('/labels/t', methods=['GET'])
 @cross_origin()
 def list_t_labels():
-    query = "MATCH (n:T_Stage_Finding) RETURN DISTINCT n.label AS label LIMIT 100"
-    labels = []
-    with db.driver.session() as session:
-        result = session.run(query)
-        for r in result:
-            labels.append(r["label"])
-    return jsonify(labels)
+    return jsonify(db.get_labels("T_Stage_Finding"))
 
 
 @app.route('/labels/n', methods=['GET'])
 @cross_origin()
 def list_n_labels():
-    query = "MATCH (n:N_Stage_Finding) RETURN DISTINCT n.label AS label LIMIT 100"
-    labels = []
-    with db.driver.session() as session:
-        result = session.run(query)
-        for r in result:
-            labels.append(r["label"])
-    return jsonify(labels)
+    return jsonify(db.get_labels("N_Stage_Finding"))
 
 
 @app.route('/labels/m', methods=['GET'])
 @cross_origin()
 def list_m_labels():
-    query = "MATCH (n:M_Stage_Finding) RETURN DISTINCT n.label AS label LIMIT 100"
-    labels = []
-    with db.driver.session() as session:
-        result = session.run(query)
-        for r in result:
-            labels.append(r["label"])
-    return jsonify(labels)
+    return jsonify(db.get_labels("M_Stage_Finding"))
 
 
 @app.route('/pipeline/debug', methods=['GET'])
@@ -322,9 +328,5 @@ def recibir_entradas():
     return jsonify({"mensaje": "Datos recibidos correctamente", "datos": datos}), 201
 
 
-if __name__ == '__main__':
-    start_validation_result_consumer()
-    app.run(host='0.0.0.0', port=8080, debug=False)
-
-
+# El servidor se arranca con backend/run_waitress.py; el consumidor se inicia al importar el módulo.
 start_validation_result_consumer()

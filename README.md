@@ -3,368 +3,231 @@
 Aplicación Flask+Neo4j para consultoría de estadios oncológicos (TNM), pruebas recomendadas y opciones de tratamiento para cáncer de mama.
 
 ## Resumen Rápido
-__________________________________________________________________________
+
 | Aspecto          |    Detalle                                           |
 |------------------|------------------------------------------------------|
-| **Stack**        | Flask 3.0 + Neo4j 5.x + RabbitMQ + Bootstrap 5       |
+| **Stack**        | Flask 3.0 + Neo4j 5 + RabbitMQ + nginx + Bootstrap 5 |
 | **Lenguajes**    | Python (backend), JavaScript/HTML5 (frontend)        |
 | **Base Datos**   | Neo4j (graph database)                               |
 | **Mensajería**   | RabbitMQ (message broker) - Comunicación asíncrona   |
-| **OS**           | Windows 10/11, Linux/macOS compatible                |
-| **Python**       | 3.11+ (recomendado con Miniforge)                    |
+| **Ejecución**    | Docker Compose (Windows, Linux o macOS)              |
+| **Python**       | 3.11 (incluido en la imagen Docker)                  |
 
-## Arquitectura de Microservicios y Mensajería
+## Arquitectura
 
-El proyecto implementa una **arquitectura de microservicios desacoplados** que se comunican a través de **RabbitMQ**:
+Cada consulta de la página pasa por un **pipeline de microservicios** que se comunican a través de **RabbitMQ**:
 
-```
-┌─────────────┐
-│   Frontend  │ (HTML + JS)
-│ (puerto5500)│
-└──────┬──────┘
-       │ HTTP requests
-       ▼
-┌──────────────────────────────────────────────────┐
-│          API Principal (biomedicos-api)          │
-│          Flask + Neo4j (puerto 5000)             │
-│  • Recibe solicitudes del frontend               │
-│  • Publica eventos a RabbitMQ (validación, etc)  │
-│  • Enruta respuestas al frontend                 │
-└──────────────┬───────────────────────────────────┘
-               │ RabbitMQ Pub/Sub
-               ▼
-      ┌────────────────┐
-      │   RabbitMQ     │ (puerto 15672 - admin)
-      │  (message      │ (puerto 5672 - AMQP)
-      │   broker)      │
-      └────┬───────┬──┘
-           │       │
-    ┌──────▼─┐   ┌─▼────────┐
-    │Recomm. │   │Validator │
-    │Service │   │Service   │
-    │(ML)    │   │(ML)      │
-    │5001    │   │5002      │
-    └────────┘   └──────────┘
-       ↑               ↑
-       └───► Neo4j ◄───┘
+```mermaid
+flowchart LR
+    Pagina["Página web<br/>nginx"] -->|/api/...| API["API<br/>Flask"]
+    API -->|tnm.recommendation.request| Rec["Recomendador"]
+    Rec <-->|Cypher| Neo4j[("Neo4j")]
+    Rec -->|tnm.validation.request| Val["Validador<br/>simulado"]
+    Val -->|tnm.validation.result| API
 ```
 
-### Microservicios
+1. La página envía la consulta (valores TNM y datos del paciente) a la API, a través de nginx, y recibe un identificador de trabajo.
+2. La API publica el trabajo en RabbitMQ.
+3. El **recomendador** consulta en Neo4j los estadios, pruebas y tratamientos de esa combinación TNM, y excluye los tratamientos quirúrgicos si la paciente no desea cirugía.
+4. El **validador** evalúa cada tratamiento. Es un **validador simulado** (regla por palabras clave); sustituirlo por un modelo de aprendizaje automático es trabajo futuro.
+5. La API recibe el resultado y la página, que la consulta cada 2 segundos, lo muestra.
+
+Si el pipeline falla o no responde en 60 segundos, la página **no muestra tratamientos**: indica que no se pudo completar la evaluación y sugiere reintentar. Así, todo tratamiento que se muestra ha pasado por el recomendador y el validador.
+
+### Servicios
 
 | Servicio | Puerto | Función | Tecnología |
 |----------|--------|---------|------------|
-| **API** | 5000 | Endpoint principal, orquestación | Flask + Neo4j |
-| **Recommender** | 5001 | Genera recomendaciones ML | Python + scikit-learn/TensorFlow |
-| **ML Validator** | 5002 | Valida patrones oncológicos | Python + ML models |
-| **RabbitMQ** | 5672/15672 | Message broker, comunicación async | RabbitMQ |
-| **Neo4j** | 7474/7687 | Base de datos de grafos | Neo4j |
+| **frontend** | 5500 | Sirve la página y reenvía `/api/...` a la API | nginx |
+| **api** | 5000 | Recibe las consultas, publica los trabajos y entrega los resultados | Python, Flask, Waitress |
+| **recommender** | — | Consulta Neo4j y genera las recomendaciones | Python, driver de Neo4j |
+| **ml-validator** | — | Valida los tratamientos (simulado) | Python |
+| **seed** | — | Valida y carga los CSV en Neo4j al arrancar | Python |
+| **rabbitmq** | 5672 / 15672 | Mensajería entre servicios | RabbitMQ 3 |
+| **neo4j** | 7474 / 7687 | Base de datos de grafos | Neo4j 5 |
 
-### Flujo de Mensajería
+Ver [MICROSERVICIOS.md](docs/MICROSERVICIOS.md) para el detalle del flujo, las colas y los mensajes, y [DIAGRAMAS.md](docs/DIAGRAMAS.md) para los diagramas.
 
-1. **Usuario envía formulario** → Frontend
-2. **API recibe datos** → Valida y publica a cola `requests` en RabbitMQ
-3. **Validator consume** → Valida patrones, publica resultado a cola `validations`
-4. **Recommender consume** → Genera recomendaciones, publica a cola `recommendations`
-5. **API consume respuestas** → Agrega datos de Neo4j y envía al frontend
-6. **Frontend recibe** → Muestra resultados al usuario
+## Instalación
 
-## Cómo Instalar el Proyecto
+El proyecto se ejecuta completo con Docker Compose: no hace falta instalar Python, Neo4j ni Node.js.
 
-El proyecto se puede instalar de dos formas:
-
-### Opción 1: Con Docker Compose (Recomendado)
-
-Ideal si desea una instalación rápida sin dependencias locales.
-
-**Requisitos:** Docker Desktop
+**Requisitos:**
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) (en Windows usa WSL2), con al menos 4 GB de RAM asignados.
+- Git.
+- Unos 2 GB de disco para las imágenes.
+- Conexión a internet: la primera vez se descargan las imágenes, y la página carga Bootstrap, jQuery, Toastr y Font Awesome desde CDN.
 
 **Pasos:**
 ```powershell
 git clone https://github.com/EduardoCN1/biomedicos.git
 cd biomedicos
-Copy-Item .env.example .env
-docker compose up --build
+docker compose up -d --build
 ```
 
-Ver [DOCKER.md](docs/DOCKER.md) para instrucciones completas y guía de uso.
+La primera vez tarda unos minutos. Compose construye la imagen del proyecto, espera a que Neo4j y RabbitMQ estén listos y el servicio `seed` carga los datos de `data/*.csv` en Neo4j automáticamente.
 
-### Opción 2: Instalación Local (Windows)
+Cuando termine, abre **http://localhost:5500**.
 
-Ideal si prefiere usar Neo4j Desktop y Conda.
+| Servicio | Dirección | Credenciales |
+|----------|-----------|--------------|
+| Aplicación web | http://localhost:5500 | — |
+| API | http://localhost:5000 (también http://localhost:5500/api) | — |
+| Neo4j Browser | http://localhost:7474 | `neo4j` / `password` (o los de tu `.env`) |
+| RabbitMQ (administración) | http://localhost:15672 | `guest` / `guest` |
 
-**Requisitos:** Miniforge/Conda, Neo4j 5.x
+La aplicación web también se puede abrir desde otro equipo de la red, en `http://<IP-de-este-equipo>:5500`, si el cortafuegos permite el acceso a ese puerto.
 
-**Pasos:** Ver [SETUP.md](docs/SETUP.md) para instalación inicial, y [USO_DIARIO_SIN_DOCKER.md](docs/USO_DIARIO_SIN_DOCKER.md) para uso diario.
+El archivo `.env` es opcional; solo hace falta para cambiar la contraseña de Neo4j o los puertos de la aplicación web y de la API (ver [Variables de Entorno](#variables-de-entorno)).
 
-## Estructura de Carpetas 
+Ver [DOCKER.md](docs/DOCKER.md) para la guía completa.
+
+## Uso Diario
+
+```powershell
+docker compose up -d            # Arrancar (los datos de Neo4j se conservan entre arranques)
+docker compose down             # Detener
+docker compose logs -f          # Ver los registros de todos los servicios
+docker compose ps               # Ver el estado de los servicios
+```
+
+Al aplicar cambios:
+- **Frontend** (`frontend/`): basta con recargar el navegador.
+- **Backend o microservicios** (`backend/`, `services/`, `scripts/`, `requirements.txt`): `docker compose up -d --build`.
+- **Configuración de nginx** (`nginx/default.conf`): `docker compose restart frontend`.
+
+## Estructura de Carpetas
 
 Ver [ARCHITECTURE.md](docs/ARCHITECTURE.md) para detalle completo.
 ```
 biomedicos/
-├── backend/                 # Servidor Flask + Neo4j
+├── backend/                 # API Flask (servida con Waitress)
 │   ├── api.py
 │   ├── config.py
 │   ├── run_waitress.py
 │   └── __init__.py
-├── frontend/                # HTML + JavaScript + CSS
-│   ├── index.html           # Página principal (reestructurada v2.2)
+├── services/                # Microservicios que consumen de RabbitMQ
+│   ├── recommender_service.py
+│   └── ml_validator_service.py
+├── frontend/                # HTML + JavaScript + CSS (servido con nginx)
+│   ├── index.html
 │   ├── css/
-│   │   ├── stilous.css      # Estilos globales
-│   │   ├── stilous.scss     # Fuente SCSS
-│   │   └── index-custom.css # Estilos específicos del index
 │   ├── js/
-│   │   ├── config.js        # Configuración
-│   │   ├── entradas.js      # Lógica de negocio
-│   │   └── main.js          # Funciones principales UI
-│   └── modals/              # Modales independientes (v2.2)
-│       ├── modal-personal.html
-│       ├── modal-heredofamiliar.html
-│       ├── modal-tumoral.html
-│       └── modal-ihc.html
-├── data/                    # Datos y backups
+│   └── modals/
+├── nginx/
+│   └── default.conf         # Sirve frontend/ y reenvía /api/ a la API
+├── data/                    # Datos de Neo4j
 │   ├── nodos.csv
-│   ├── relaciones.csv
-│   └── backups/
-├── scripts/                 # Automatización
-│   ├── setup.ps1            # Instala dependencias
-│   ├── run.ps1              # Arranca servidor
-│   └── import_csv.py        # Importa CSV → Neo4j
+│   └── relaciones.csv
+├── scripts/
+│   ├── import_csv.py        # Valida y carga los CSV en Neo4j (lo ejecuta el servicio seed)
+│   └── test-pipeline.ps1    # Prueba de extremo a extremo del pipeline
 ├── tests/
 │   └── test_api.py
 ├── docs/                    # Documentación
-│   ├── ARCHITECTURE.md
-│   ├── API.md
-│   ├── SETUP.md
-│   └── REESTRUCTURACION_FRONTEND.md  #  Nueva (v2.2)
+├── docker-compose.yml       # Definición de todos los servicios
+├── Dockerfile               # Imagen de la API y los microservicios
 ├── .env.example
 ├── requirements.txt
+├── requirements-dev.txt     # Dependencias de los tests (pytest)
 └── README.md
 ```
 
-###  Novedades v2.3 (Mayo 2026)
-- **Arquitectura de Microservicios**: Comunicación asíncrona con RabbitMQ
-- **API Principal**: Servicio Flask centralizado con validación de datos
-- **Recomendador (ML)**: Microservicio que genera recomendaciones basadas en ML
-- **Validador de ML**: Microservicio que valida patrones oncológicos
-- **Message Broker**: RabbitMQ para orquestar comunicación entre servicios
+### Novedades v2.4 (Octubre 2026)
+- **Instalación solo con Docker**: un comando levanta todo; los datos se validan y se cargan automáticamente.
+- **Frontend servido por nginx**, que reenvía `/api/...` a la API: sin URL ni puerto fijos en el JavaScript.
+- **Pipeline más robusto**: reintentos al consultar Neo4j y aviso inmediato cuando falla un microservicio.
+- **Sin resultados sin evaluar**: si el pipeline falla, la página muestra un error en lugar de tratamientos no validados (se elimina el modo degradado).
+- **Datos corregidos**: etiquetas siempre como texto y errata "Endocrine Therapy".
+- **Documentación reescrita** a partir del sistema real.
 
-###  Novedades v2.2 (Marzo 2026)
+### Novedades v2.3 (Mayo 2026)
+- **Pipeline de microservicios** con RabbitMQ: API → recomendador → validador.
+- **Validador simulado**, preparado para sustituirlo por un modelo de ML.
+- **Preferencia de cirugía** en la consulta.
+- **Docker Compose** para todos los servicios.
+
+### Novedades v2.2 (Marzo 2026)
 - **Reestructuración Frontend**: CSS, JS y modales en archivos separados
 - **Interfaz Mejorada**: Diseño moderno con animaciones y validaciones
-- **Modales Dinámicos**: Carga on-demand de formularios
+- **Modales en archivos separados**, cargados al abrir la página
 - **Better UX**: Spinner de carga, notificaciones, perfil en tiempo real
 
-Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detalles completos.
-
-## Inicio Rápido
-
-###  Primera Vez (Setup Completo)
-
-  **1. Instalar Dependencias**
-  ```powershell
-  .\scripts\setup.ps1
-  ```
-
-  **2. Configurar Variables de Entorno**
-  ```powershell
-  Copy-Item .env.example .env
-  # Editar .env con credenciales Neo4j reales
-  ```
-
-  **3. Iniciar Neo4j Desktop**
-  - Abrir Neo4j Desktop
-  - Seleccionar proyecto → Click "Start" (botón verde)
-  - Esperar hasta ver "Running" ✓
-
-  **4. Poblar Base de Datos (solo primera vez)**
-  
-  Tienes **dos opciones** (elige una):
-  
-  **Opción A: Importar desde CSV**
-  ```powershell
-  python .\scripts\import_csv.py
-  ```
-  
-  **Opción B: Restaurar desde dump** (si tienes un archivo `.dump`)
-  ```powershell
-  # Ver guía completa en docs/DATABASE.md
-  neo4j-admin database load neo4j --from-path="data\backups" --overwrite-destination=true
-  ```
-  
-  > **Nota:** Si ya tienes datos en Neo4j, omite este paso. Ver [DATABASE.md](docs/DATABASE.md) para más detalles.
-
-  **5. Arrancar Servidor**
-  ```powershell
-  .\scripts\run.ps1
-  # El servidor estará en http://localhost:5000
-  ```
-
-  **6. Abrir Frontend**
-  - Click derecho en `frontend/index.html` → "Open with Live Server"
-  - O navegar a `http://localhost:5500/frontend/index.html`
-
-###  Uso Diario (Ya hiciste el setup)
-
-  **1. Iniciar Neo4j Desktop**
-  - Abrir Neo4j Desktop → Start (botón verde)
-  - Esperar "Running" ✓
-
-  **2. Abrir PowerShell NUEVA** 
-  ```
-  Importante: Si tenías terminales abiertas antes de iniciar Neo4j,
-  ciérralas y abre una terminal NUEVA. Esto evita errores de conexión.
-  ```
-
-  **3. Arrancar Servidor**
-  ```powershell
-  .\scripts\run.ps1
-  ```
-
-  **4. Abrir Frontend (Live Server)**
-
-  **5. Probar**
-  ```powershell
-  # En otra terminal
-  Invoke-RestMethod http://localhost:5000/
-  # Respuesta: "En ejecución"
-  ```
-
-### Al Terminar de Trabajar
-
-  **Con Docker:**
-  ```powershell
-  # Detener contenedores (conserva datos)
-  docker compose down
-  ```
-  Esto libera los puertos y detiene Neo4j/API. Los datos permanecen en el volumen Docker.
-  
-  Opcionalmente cierra Docker Desktop si no lo usas para otros proyectos.
-
-  **Sin Docker (Local):**
-  ```powershell
-  # 1. Detener servidor Flask (Ctrl+C en terminal)
-  # 2. Detener Neo4j Desktop: Click "Stop" en la aplicación
-  # 3. Cerrar Neo4j Desktop si deseas
-  ```
-
-### Atajo Rápido (Sin scripts)
-
-  Si prefieres no usar scripts:
-  ```powershell
-  # 1. Activar entorno
-  conda activate biomedicos
-
-  # 2. Arrancar servidor
-  python .\backend\run_waitress.py
-  ```
+Ver el [CHANGELOG](CHANGELOG.md) para el detalle de cada versión.
 
 ## Documentación Completa
 
 Consulte la documentación apropiada según su caso de uso:
 
-  - **[DOCKER.md](docs/DOCKER.md)** - Instalación y uso del proyecto completo con Docker Compose (recomendado)
-  - **[SETUP.md](docs/SETUP.md)** - Instalación local sin Docker (Conda + Neo4j Desktop)
-  - **[USO_DIARIO_SIN_DOCKER.md](docs/USO_DIARIO_SIN_DOCKER.md)** - Guía de uso diario sin Docker
-  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Arquitectura detallada de microservicios y RabbitMQ
-  - **[DATABASE.md](docs/DATABASE.md)** - Gestión de datos Neo4j (CSV, dump, backups)
-  - **[API.md](docs/API.md)** - Referencia de endpoints con ejemplos cURL y PowerShell
-  - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Flujos de datos y dependencias del proyecto
-  - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas avanzados
+  - **[DOCKER.md](docs/DOCKER.md)** - Instalación y uso del proyecto con Docker Compose
+  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Pipeline de microservicios, colas, mensajes y modelo de datos
+  - **[API.md](docs/API.md)** - Referencia de endpoints con respuestas reales
+  - **[DATABASE.md](docs/DATABASE.md)** - Datos de Neo4j: formato, carga, copias de seguridad
+  - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Estructura, flujos, configuración y dependencias
   - **[DIAGRAMAS.md](docs/DIAGRAMAS.md)** - Diagramas Mermaid de arquitectura
-  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - Mejoras UI/UX v2.2 (Marzo 2026)
+  - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas
+  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - Registro histórico de la reestructuración del frontend (v2.2)
 
 ## Endpoints Disponibles
 
-  | GET                   |       POST                     |
-  |-----------------------|--------------------------------|
-  | `GET /`               | `POST /entradas`               |
-  | `GET /labels/t`       |     (recibir datos formulario) |
-  | `GET /labels/n`       |                                | 
-  | `GET /labels/m`       |                                | 
-  | `GET /get_stage_info?t_label=T2&n_label=N1&m_label=M0` | 
-  
-  >**Ver** [API.md](docs/API.md) **para ejemplos y respuestas.**
+  Accesibles en `http://localhost:5000` o, a través del proxy, en `http://localhost:5500/api`.
+
+  | Método | Ruta | Descripción |
+  |--------|------|-------------|
+  | GET | `/` | Comprobación de que la API está en marcha |
+  | GET | `/labels/t`, `/labels/n`, `/labels/m` | Valores T, N y M disponibles |
+  | GET | `/get_stage_info?t_label=T2&n_label=N1&m_label=M0` | Consulta directa de estadios, pruebas y tratamientos |
+  | POST | `/pipeline/submit` | Envía una consulta al pipeline de microservicios |
+  | GET | `/pipeline/result/<job_id>` | Estado y resultado de una consulta del pipeline |
+  | GET | `/pipeline/health` | Estado de RabbitMQ y del consumidor de resultados |
+  | GET | `/pipeline/debug` | Todos los trabajos en memoria (depuración) |
+  | POST | `/entradas` | Devuelve el JSON recibido (la página no lo usa) |
+
+  >**Ver** [API.md](docs/API.md) **para parámetros, ejemplos y respuestas.**
 
 ## Variables de Entorno
 
-  Crear archivo `.env` (copiar desde `.env.example`):
-
-  ```ini
-  # Neo4j
-  NEO4J_URI=neo4j://127.0.0.1:7687
-  NEO4J_USER=neo4j
-  NEO4J_PASSWORD=your_password_here
-  
-  # API Principal
-  HOST=0.0.0.0
-  PORT=5000
-  ENVIRONMENT=development
-  
-  # RabbitMQ
-  RABBITMQ_HOST=localhost
-  RABBITMQ_PORT=5672
-  RABBITMQ_USER=guest
-  RABBITMQ_PASSWORD=guest
-  
-  # Microservicios
-  RECOMMENDER_HOST=localhost
-  RECOMMENDER_PORT=5001
-  VALIDATOR_HOST=localhost
-  VALIDATOR_PORT=5002
-  ```
-  **Nota:** No commitear `.env` a Git (contiene credenciales). Usar `.env.example` como template.
-
-## Requisitos
-
-  - Windows/Linux/macOS
-  - Python 3.11+
-  - Miniforge/Conda (recomendado)
-  - Neo4j 5.x ejecutándose
-  - 500MB espacio en disco
-
-## Instalar Manualmente (sin script setup.ps1)
+  El archivo `.env` es **opcional**: sin él se usan los valores por defecto. Para personalizarlo, copia la plantilla y edítala:
 
   ```powershell
-  # Crear y activar entorno
-  conda create -n biomedicos python=3.11 -y
-  conda activate biomedicos
-
-  # Instalar dependencias (binarias, sin compilar)
-  conda install -c conda-forge numpy pandas -y
-  pip install --upgrade pip setuptools wheel
-  pip install -r requirements.txt
-
-  # Arrancar servidor
-  python .\backend\run_waitress.py
+  cp .env.example .env
   ```
 
-## Testing (test api)
+  | Variable | Por defecto | Uso |
+  |----------|-------------|-----|
+  | `NEO4J_USER` | `neo4j` | Usuario de Neo4j |
+  | `NEO4J_PASSWORD` | `password` | Contraseña de Neo4j (mínimo 8 caracteres) |
+  | `FRONTEND_PORT` | `5500` | Puerto de la aplicación web en tu equipo |
+  | `API_PORT` | `5000` | Puerto de la API en tu equipo, para pruebas directas (la página usa `/api`) |
+
+  El resto de la configuración (URIs, colas de RabbitMQ y demás puertos) está fijada en `docker-compose.yml`.
+
+  **Notas:**
+  - La contraseña de Neo4j solo se aplica la primera vez que se crea su volumen. Si la cambias después, recrea el volumen con `docker compose down -v` (los datos se vuelven a cargar desde los CSV).
+  - No commitear `.env` a Git (contiene credenciales).
+
+## Tests
 
   ```powershell
-  conda activate biomedicos
-  pip install pytest
-  python -m pytest tests/test_api.py -v
+  # Tests de la API (con el proyecto levantado; usan Neo4j con datos)
+  docker compose run --rm api python -m pytest tests -v
+
+  # Prueba de extremo a extremo del pipeline (PowerShell)
+  .\scripts\test-pipeline.ps1
   ```
 
 ## Gestión de Datos Neo4j
 
-  ### Opción A: Importar desde CSV
-  ```powershell
-  python .\scripts\import_csv.py
-  ```
-  Script automatizado que:
-  1. Lee `data/nodos.csv` y `data/relaciones.csv`
-  2. Conecta a Neo4j usando credenciales de `.env`
-  3. Crea todos los nodos y relaciones en Neo4j
+  Los datos se cargan solos: al levantar el proyecto, el servicio `seed` importa `data/nodos.csv` y `data/relaciones.csv` si Neo4j está vacío. Si ya tiene datos, no hace nada.
 
-  ### Opción B: Restaurar desde Dump
+  Para volver a cargarlos desde cero (por ejemplo, después de editar los CSV):
+
   ```powershell
-  # Neo4j debe estar DETENIDO
-  neo4j-admin database load neo4j --from-path="data\backups" --overwrite-destination=true
-  # Luego iniciar Neo4j
+  docker compose down -v      # Borra el volumen de Neo4j
+  docker compose up -d
   ```
 
-  > **Ver [DATABASE.md](docs/DATABASE.md) para guía completa** sobre cuándo usar cada opción, crear backups, y limpiar datos.
+  > **Ver [DATABASE.md](docs/DATABASE.md)** para copias de seguridad, restauración y consultas de verificación.
 
 ## Desarrollo
 
@@ -379,71 +242,59 @@ Consulte la documentación apropiada según su caso de uso:
       return {'resultado': 'OK'}, 200
   ```
 
+  Después, reconstruir: `docker compose up -d --build`. El endpoint queda disponible también en `/api/mi_endpoint` a través del proxy, sin cambiar nginx.
+
   ### Modificar frontend
 
-  Editar `frontend/index.html` y `frontend/js/entradas.js`:
+  Editar `frontend/index.html` y `frontend/js/entradas.js`, y recargar el navegador. Las llamadas a la API usan la constante `API_URL` (`'/api'`), definida en `entradas.js`:
 
   ```javascript
   // entradas.js - Añadir función AJAX
   function miFunc() {
       $.ajax({
-          url: 'http://127.0.0.1:5000/mi_endpoint',
+          url: `${API_URL}/mi_endpoint`,
           ...
       });
   }
   ```
 
-### Agregar dependencias
+  ### Agregar dependencias
 
-  Editar `requirements.txt`, luego:
+  Editar `requirements.txt` (o `requirements-dev.txt` para herramientas de test) y reconstruir:
   ```powershell
-  pip install -r requirements.txt
+  docker compose up -d --build
   ```
 
 ## Solucionar Problemas
 
-  ### "Port 5000 already in use"
-  ```powershell
-  # Cambiar puerto en .env:
-  # PORT=5001
+  ### Un puerto ya está en uso
+  - **Aplicación web (5500) o API (5000):** cambia `FRONTEND_PORT` o `API_PORT` en `.env` y vuelve a ejecutar `docker compose up -d`. En macOS, el 5000 suele estar ocupado por el Receptor AirPlay.
+  - **Otros puertos (5672, 7474, 7687, 15672):** libera el puerto cerrando el programa que lo usa.
 
-  # O matar proceso:
-  Get-Process python | Stop-Process -Force
-  ```
+  ### "Cannot connect to the Docker daemon"
+  Docker Desktop no está abierto. Ábrelo, espera a que indique que está en ejecución y repite el comando.
 
-  ### "Neo4j connection refused" o "Unable to retrieve routing information"
-  - **Verificar Neo4j está corriendo:** Abrir Neo4j Desktop → Start → "Running" ✓
-  - **Verificar web UI:** `http://localhost:7474`
-  - **Validar credenciales en `.env`**
-  - **Si ya estaba corriendo:** Cerrar terminal y abrir una NUEVA
-
-  ### "Terminal no detecta Neo4j"
-  ```
-  IMPORTANTE: Si abriste PowerShell ANTES de iniciar Neo4j,
-  la terminal no detectará que Neo4j está activo.
-  
-  Solución:
-  1. Cerrar TODAS las terminales
-  2. Abrir PowerShell NUEVA
-  3. Ejecutar .\scripts\run.ps1
-  ```
-
-  ### "CORS error" en frontend
-  - Asegurar backend está corriendo
-  - Verificar URL en `entradas.js` es `http://127.0.0.1:5000`
+  ### La página carga pero no muestra tratamientos
+  - Si aparece el aviso **«No se pudo completar la evaluación»**, el pipeline no terminó la consulta y la página no muestra tratamientos sin evaluar (ver [problema 7 de TROUBLESHOOTING](docs/TROUBLESHOOTING.md#7-aviso-no-se-pudo-completar-la-evaluación-en-la-página)).
+  - Comprueba que todos los servicios estén en marcha: `docker compose ps -a` (`seed` debe aparecer como `Exited (0)`).
+  - Revisa los registros: `docker compose logs api recommender ml-validator`.
 
   > **Ver** [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) **para más soluciones.**
 
 ## Próximas Mejoras
+- [ ] Modelo de ML real para el validador (hoy es simulado)
+- [ ] Guardar los trabajos del pipeline fuera de memoria (por ejemplo, Redis)
 - [ ] Autenticación JWT
-- [ ] Frontend React/Vue
-- [ ] Más tests (cobertura 90%+)
+- [ ] Más tests (pipeline y frontend)
 - [ ] CI/CD (GitHub Actions)
+- [ ] Frontend React/Vue
 
 
 ## Contacto y Licencia
 Proyecto de práctica sobre arquitectura de software biomedico.
 
+**No apto para uso clínico:** el validador de tratamientos es simulado y los datos no constituyen una guía de estadificación completa.
+
 ---
-**Última actualización:** 2026-03-04
-**Versión:** 2.2 (Reestructuración Frontend + Mejoras UI/UX)
+**Última actualización:** 2026-10-07
+**Versión:** 2.4 (Instalación con Docker + pipeline más robusto)

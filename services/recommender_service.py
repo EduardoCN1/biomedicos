@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pika
 from neo4j import GraphDatabase
@@ -12,6 +12,7 @@ from backend.config import (
     RABBITMQ_URL,
     RECOMMENDATION_REQUEST_QUEUE,
     VALIDATION_REQUEST_QUEUE,
+    VALIDATION_RESULT_QUEUE,
 )
 
 
@@ -74,19 +75,21 @@ class Neo4JDatabase:
                collect(distinct treatment.label) AS TreatmentOptions
         """
 
-        stages: List[Dict[str, Any]] = []
-        with self.driver.session() as session:
-            result = session.run(query, t_label=t_label, n_label=n_label, m_label=m_label)
-            for record in result:
-                stages.append(
-                    {
-                        "Stage": record["Stage"]["label"],
-                        "RecommendedTests": record["RecommendedTests"],
-                        "TreatmentOptions": record["TreatmentOptions"],
-                    }
-                )
+        def read_stages(tx) -> List[Dict[str, Any]]:
+            result = tx.run(query, t_label=t_label, n_label=n_label, m_label=m_label)
+            return [
+                {
+                    "Stage": record["Stage"]["label"],
+                    "RecommendedTests": record["RecommendedTests"],
+                    "TreatmentOptions": record["TreatmentOptions"],
+                }
+                for record in result
+            ]
 
-        return stages
+        # execute_read reintenta ante errores transitorios, como la primera consulta
+        # tras reiniciar Neo4j
+        with self.driver.session() as session:
+            return session.execute_read(read_stages)
 
 
 def create_connection() -> pika.BlockingConnection:
@@ -105,7 +108,30 @@ def publish(channel, queue_name: str, payload: Dict[str, Any]) -> None:
     )
 
 
+def report_failure(channel, job_id: Optional[str], error: Exception) -> None:
+    """Publica el fallo directamente en la cola de resultados (saltando el validador) para
+    que la API marque el trabajo como fallido; sin esto la página esperaba 60 s antes de
+    pasar a modo degradado."""
+    if not job_id:
+        return  # Sin job_id no hay trabajo al que asociar el fallo
+    try:
+        publish(
+            channel,
+            VALIDATION_RESULT_QUEUE,
+            {
+                "job_id": job_id,
+                "status": "failed",
+                "error": f"recommender: {error}",
+                "timestamp": int(time.time()),
+            },
+        )
+    except Exception as exc:
+        print(f"[recommender] No se pudo publicar el fallo de job_id={job_id}: {exc}")
+
+
 def run() -> None:
+    # Una sola conexión a Neo4j para toda la vida del servicio: no se cierra al
+    # reconectar con RabbitMQ (antes se cerraba y se seguía usando cerrada)
     db = Neo4JDatabase(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
 
     while True:
@@ -119,6 +145,7 @@ def run() -> None:
             print(f"[recommender] Esperando mensajes en: {RECOMMENDATION_REQUEST_QUEUE}")
 
             def on_message(ch, method, properties, body):
+                job_id = None
                 try:
                     payload = json.loads(body.decode("utf-8"))
                     job_id = payload.get("job_id")
@@ -150,6 +177,7 @@ def run() -> None:
                     print(f"[recommender] job_id={job_id} enviado a validación")
                 except Exception as exc:
                     print(f"[recommender] Error procesando mensaje: {exc}")
+                    report_failure(ch, job_id, exc)
                 finally:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -159,11 +187,6 @@ def run() -> None:
         except Exception as exc:
             print(f"[recommender] Broker desconectado o error: {exc}. Reintentando en 5s...")
             time.sleep(5)
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
 
 
 if __name__ == "__main__":
