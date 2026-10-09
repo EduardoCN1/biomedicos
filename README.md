@@ -6,67 +6,47 @@ Aplicación Flask+Neo4j para consultoría de estadios oncológicos (TNM), prueba
 __________________________________________________________________________
 | Aspecto          |    Detalle                                           |
 |------------------|------------------------------------------------------|
-| **Stack**        | Flask 3.0 + Neo4j 5.x + RabbitMQ + Bootstrap 5       |
+| **Stack**        | Flask 3.0 + Neo4j 5 + RabbitMQ + nginx + Bootstrap 5 |
 | **Lenguajes**    | Python (backend), JavaScript/HTML5 (frontend)        |
 | **Base Datos**   | Neo4j (graph database)                               |
 | **Mensajería**   | RabbitMQ (message broker) - Comunicación asíncrona   |
 | **Ejecución**    | Docker Compose (Windows, Linux o macOS)              |
 | **Python**       | 3.11 (incluido en la imagen Docker)                  |
 
-## Arquitectura de Microservicios y Mensajería
+## Arquitectura
 
-El proyecto implementa una **arquitectura de microservicios desacoplados** que se comunican a través de **RabbitMQ**:
+Cada consulta de la página pasa por un **pipeline de microservicios** que se comunican a través de **RabbitMQ**:
 
-```
-┌─────────────┐
-│   Frontend  │ (HTML + JS)
-│ (puerto5500)│
-└──────┬──────┘
-       │ HTTP requests
-       ▼
-┌──────────────────────────────────────────────────┐
-│          API Principal (biomedicos-api)          │
-│          Flask + Neo4j (puerto 5000)             │
-│  • Recibe solicitudes del frontend               │
-│  • Publica eventos a RabbitMQ (validación, etc)  │
-│  • Enruta respuestas al frontend                 │
-└──────────────┬───────────────────────────────────┘
-               │ RabbitMQ Pub/Sub
-               ▼
-      ┌────────────────┐
-      │   RabbitMQ     │ (puerto 15672 - admin)
-      │  (message      │ (puerto 5672 - AMQP)
-      │   broker)      │
-      └────┬───────┬──┘
-           │       │
-    ┌──────▼─┐   ┌─▼────────┐
-    │Recomm. │   │Validator │
-    │Service │   │Service   │
-    │(ML)    │   │(ML)      │
-    │5001    │   │5002      │
-    └────────┘   └──────────┘
-       ↑               ↑
-       └───► Neo4j ◄───┘
+```mermaid
+flowchart LR
+    Pagina["Página web<br/>nginx"] -->|/api/...| API["API<br/>Flask"]
+    API -->|tnm.recommendation.request| Rec["Recomendador"]
+    Rec <-->|Cypher| Neo4j[("Neo4j")]
+    Rec -->|tnm.validation.request| Val["Validador<br/>simulado"]
+    Val -->|tnm.validation.result| API
 ```
 
-### Microservicios
+1. La página envía la consulta (valores TNM y datos del paciente) a la API, a través de nginx, y recibe un identificador de trabajo.
+2. La API publica el trabajo en RabbitMQ.
+3. El **recomendador** consulta en Neo4j los estadios, pruebas y tratamientos de esa combinación TNM, y excluye los tratamientos quirúrgicos si la paciente no desea cirugía.
+4. El **validador** evalúa cada tratamiento. Es un **validador simulado** (regla por palabras clave); sustituirlo por un modelo de aprendizaje automático es trabajo futuro.
+5. La API recibe el resultado y la página, que la consulta cada 2 segundos, lo muestra.
+
+Si el pipeline falla o no responde en 60 segundos, la página **no muestra tratamientos**: indica que no se pudo completar la evaluación y sugiere reintentar. Así, todo tratamiento que se muestra ha pasado por el recomendador y el validador.
+
+### Servicios
 
 | Servicio | Puerto | Función | Tecnología |
 |----------|--------|---------|------------|
-| **API** | 5000 | Endpoint principal, orquestación | Flask + Neo4j |
-| **Recommender** | 5001 | Genera recomendaciones ML | Python + scikit-learn/TensorFlow |
-| **ML Validator** | 5002 | Valida patrones oncológicos | Python + ML models |
-| **RabbitMQ** | 5672/15672 | Message broker, comunicación async | RabbitMQ |
-| **Neo4j** | 7474/7687 | Base de datos de grafos | Neo4j |
+| **frontend** | 5500 | Sirve la página y reenvía `/api/...` a la API | nginx |
+| **api** | 5000 | Recibe las consultas, publica los trabajos y entrega los resultados | Python, Flask, Waitress |
+| **recommender** | — | Consulta Neo4j y genera las recomendaciones | Python, driver de Neo4j |
+| **ml-validator** | — | Valida los tratamientos (simulado) | Python |
+| **seed** | — | Valida y carga los CSV en Neo4j al arrancar | Python |
+| **rabbitmq** | 5672 / 15672 | Mensajería entre servicios | RabbitMQ 3 |
+| **neo4j** | 7474 / 7687 | Base de datos de grafos | Neo4j 5 |
 
-### Flujo de Mensajería
-
-1. **Usuario envía formulario** → Frontend
-2. **API recibe datos** → Valida y publica a cola `requests` en RabbitMQ
-3. **Validator consume** → Valida patrones, publica resultado a cola `validations`
-4. **Recommender consume** → Genera recomendaciones, publica a cola `recommendations`
-5. **API consume respuestas** → Agrega datos de Neo4j y envía al frontend
-6. **Frontend recibe** → Muestra resultados al usuario
+Ver [MICROSERVICIOS.md](docs/MICROSERVICIOS.md) para el detalle del flujo, las colas y los mensajes, y [DIAGRAMAS.md](docs/DIAGRAMAS.md) para los diagramas.
 
 ## Instalación
 
@@ -92,11 +72,13 @@ Cuando termine, abre **http://localhost:5500**.
 | Servicio | Dirección | Credenciales |
 |----------|-----------|--------------|
 | Aplicación web | http://localhost:5500 | — |
-| API | http://localhost:5000 | — |
+| API | http://localhost:5000 (también http://localhost:5500/api) | — |
 | Neo4j Browser | http://localhost:7474 | `neo4j` / `password` (o los de tu `.env`) |
 | RabbitMQ (administración) | http://localhost:15672 | `guest` / `guest` |
 
-El archivo `.env` es opcional; solo hace falta para cambiar la contraseña de Neo4j o el puerto de la aplicación web (ver [Variables de Entorno](#variables-de-entorno)).
+La aplicación web también se puede abrir desde otro equipo de la red, en `http://<IP-de-este-equipo>:5500`, si el cortafuegos permite el acceso a ese puerto.
+
+El archivo `.env` es opcional; solo hace falta para cambiar la contraseña de Neo4j o los puertos de la aplicación web y de la API (ver [Variables de Entorno](#variables-de-entorno)).
 
 Ver [DOCKER.md](docs/DOCKER.md) para la guía completa.
 
@@ -112,6 +94,7 @@ docker compose ps               # Ver el estado de los servicios
 Al aplicar cambios:
 - **Frontend** (`frontend/`): basta con recargar el navegador.
 - **Backend o microservicios** (`backend/`, `services/`, `scripts/`, `requirements.txt`): `docker compose up -d --build`.
+- **Configuración de nginx** (`nginx/default.conf`): `docker compose restart frontend`.
 
 ## Estructura de Carpetas
 
@@ -131,11 +114,13 @@ biomedicos/
 │   ├── css/
 │   ├── js/
 │   └── modals/
+├── nginx/
+│   └── default.conf         # Sirve frontend/ y reenvía /api/ a la API
 ├── data/                    # Datos de Neo4j
 │   ├── nodos.csv
 │   └── relaciones.csv
 ├── scripts/
-│   ├── import_csv.py        # Carga los CSV en Neo4j (lo ejecuta el servicio seed)
+│   ├── import_csv.py        # Valida y carga los CSV en Neo4j (lo ejecuta el servicio seed)
 │   └── test-pipeline.ps1    # Prueba de extremo a extremo del pipeline
 ├── tests/
 │   └── test_api.py
@@ -148,45 +133,57 @@ biomedicos/
 └── README.md
 ```
 
-###  Novedades v2.3 (Mayo 2026)
-- **Arquitectura de Microservicios**: Comunicación asíncrona con RabbitMQ
-- **API Principal**: Servicio Flask centralizado con validación de datos
-- **Recomendador (ML)**: Microservicio que genera recomendaciones basadas en ML
-- **Validador de ML**: Microservicio que valida patrones oncológicos
-- **Message Broker**: RabbitMQ para orquestar comunicación entre servicios
+### Novedades v2.4 (Octubre 2026)
+- **Instalación solo con Docker**: un comando levanta todo; los datos se validan y se cargan automáticamente.
+- **Frontend servido por nginx**, que reenvía `/api/...` a la API: sin URL ni puerto fijos en el JavaScript.
+- **Pipeline más robusto**: reintentos al consultar Neo4j y aviso inmediato cuando falla un microservicio.
+- **Sin resultados sin evaluar**: si el pipeline falla, la página muestra un error en lugar de tratamientos no validados (se elimina el modo degradado).
+- **Datos corregidos**: etiquetas siempre como texto y errata "Endocrine Therapy".
+- **Documentación reescrita** a partir del sistema real.
 
-###  Novedades v2.2 (Marzo 2026)
+### Novedades v2.3 (Mayo 2026)
+- **Pipeline de microservicios** con RabbitMQ: API → recomendador → validador.
+- **Validador simulado**, preparado para sustituirlo por un modelo de ML.
+- **Preferencia de cirugía** en la consulta.
+- **Docker Compose** para todos los servicios.
+
+### Novedades v2.2 (Marzo 2026)
 - **Reestructuración Frontend**: CSS, JS y modales en archivos separados
 - **Interfaz Mejorada**: Diseño moderno con animaciones y validaciones
-- **Modales Dinámicos**: Carga on-demand de formularios
+- **Modales en archivos separados**, cargados al abrir la página
 - **Better UX**: Spinner de carga, notificaciones, perfil en tiempo real
 
-Ver [REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md) para detalles completos.
+Ver el [CHANGELOG](CHANGELOG.md) para el detalle de cada versión.
 
 ## Documentación Completa
 
 Consulte la documentación apropiada según su caso de uso:
 
   - **[DOCKER.md](docs/DOCKER.md)** - Instalación y uso del proyecto con Docker Compose
-  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Arquitectura detallada de microservicios y RabbitMQ
-  - **[DATABASE.md](docs/DATABASE.md)** - Gestión de datos Neo4j (CSV, dump, backups)
-  - **[API.md](docs/API.md)** - Referencia de endpoints con ejemplos cURL y PowerShell
-  - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Flujos de datos y dependencias del proyecto
-  - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas avanzados
+  - **[MICROSERVICIOS.md](docs/MICROSERVICIOS.md)** - Pipeline de microservicios, colas, mensajes y modelo de datos
+  - **[API.md](docs/API.md)** - Referencia de endpoints con respuestas reales
+  - **[DATABASE.md](docs/DATABASE.md)** - Datos de Neo4j: formato, carga, copias de seguridad
+  - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Estructura, flujos, configuración y dependencias
   - **[DIAGRAMAS.md](docs/DIAGRAMAS.md)** - Diagramas Mermaid de arquitectura
-  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - Mejoras UI/UX v2.2 (Marzo 2026)
+  - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas
+  - **[REESTRUCTURACION_FRONTEND.md](docs/REESTRUCTURACION_FRONTEND.md)** - Registro histórico de la reestructuración del frontend (v2.2)
 
 ## Endpoints Disponibles
 
-  | GET                   |       POST                     |
-  |-----------------------|--------------------------------|
-  | `GET /`               | `POST /entradas`               |
-  | `GET /labels/t`       |     (recibir datos formulario) |
-  | `GET /labels/n`       |                                | 
-  | `GET /labels/m`       |                                | 
-  | `GET /get_stage_info?t_label=T2&n_label=N1&m_label=M0` | 
-  
-  >**Ver** [API.md](docs/API.md) **para ejemplos y respuestas.**
+  Accesibles en `http://localhost:5000` o, a través del proxy, en `http://localhost:5500/api`.
+
+  | Método | Ruta | Descripción |
+  |--------|------|-------------|
+  | GET | `/` | Comprobación de que la API está en marcha |
+  | GET | `/labels/t`, `/labels/n`, `/labels/m` | Valores T, N y M disponibles |
+  | GET | `/get_stage_info?t_label=T2&n_label=N1&m_label=M0` | Consulta directa de estadios, pruebas y tratamientos |
+  | POST | `/pipeline/submit` | Envía una consulta al pipeline de microservicios |
+  | GET | `/pipeline/result/<job_id>` | Estado y resultado de una consulta del pipeline |
+  | GET | `/pipeline/health` | Estado de RabbitMQ y del consumidor de resultados |
+  | GET | `/pipeline/debug` | Todos los trabajos en memoria (depuración) |
+  | POST | `/entradas` | Devuelve el JSON recibido (la página no lo usa) |
+
+  >**Ver** [API.md](docs/API.md) **para parámetros, ejemplos y respuestas.**
 
 ## Variables de Entorno
 
@@ -201,6 +198,7 @@ Consulte la documentación apropiada según su caso de uso:
   | `NEO4J_USER` | `neo4j` | Usuario de Neo4j |
   | `NEO4J_PASSWORD` | `password` | Contraseña de Neo4j (mínimo 8 caracteres) |
   | `FRONTEND_PORT` | `5500` | Puerto de la aplicación web en tu equipo |
+  | `API_PORT` | `5000` | Puerto de la API en tu equipo, para pruebas directas (la página usa `/api`) |
 
   El resto de la configuración (URIs, colas de RabbitMQ y demás puertos) está fijada en `docker-compose.yml`.
 
@@ -244,17 +242,17 @@ Consulte la documentación apropiada según su caso de uso:
       return {'resultado': 'OK'}, 200
   ```
 
-  Después, reconstruir: `docker compose up -d --build`.
+  Después, reconstruir: `docker compose up -d --build`. El endpoint queda disponible también en `/api/mi_endpoint` a través del proxy, sin cambiar nginx.
 
   ### Modificar frontend
 
-  Editar `frontend/index.html` y `frontend/js/entradas.js`, y recargar el navegador:
+  Editar `frontend/index.html` y `frontend/js/entradas.js`, y recargar el navegador. Las llamadas a la API usan la constante `API_URL` (`'/api'`), definida en `entradas.js`:
 
   ```javascript
   // entradas.js - Añadir función AJAX
   function miFunc() {
       $.ajax({
-          url: 'http://127.0.0.1:5000/mi_endpoint',
+          url: `${API_URL}/mi_endpoint`,
           ...
       });
   }
@@ -270,8 +268,8 @@ Consulte la documentación apropiada según su caso de uso:
 ## Solucionar Problemas
 
   ### Un puerto ya está en uso
-  - **Aplicación web (5500):** cambia `FRONTEND_PORT` en `.env` y vuelve a ejecutar `docker compose up -d`.
-  - **Otros puertos (5000, 5672, 7474, 7687, 15672):** libera el puerto cerrando el programa que lo usa. En macOS, el 5000 lo ocupa el Receptor AirPlay (se desactiva en Ajustes del Sistema → General → AirDrop y Handoff).
+  - **Aplicación web (5500) o API (5000):** cambia `FRONTEND_PORT` o `API_PORT` en `.env` y vuelve a ejecutar `docker compose up -d`. En macOS, el 5000 suele estar ocupado por el Receptor AirPlay.
+  - **Otros puertos (5672, 7474, 7687, 15672):** libera el puerto cerrando el programa que lo usa.
 
   ### "Cannot connect to the Docker daemon"
   Docker Desktop no está abierto. Ábrelo, espera a que indique que está en ejecución y repite el comando.
@@ -283,15 +281,19 @@ Consulte la documentación apropiada según su caso de uso:
   > **Ver** [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) **para más soluciones.**
 
 ## Próximas Mejoras
+- [ ] Modelo de ML real para el validador (hoy es simulado)
+- [ ] Guardar los trabajos del pipeline fuera de memoria (por ejemplo, Redis)
 - [ ] Autenticación JWT
-- [ ] Frontend React/Vue
-- [ ] Más tests (cobertura 90%+)
+- [ ] Más tests (pipeline y frontend)
 - [ ] CI/CD (GitHub Actions)
+- [ ] Frontend React/Vue
 
 
 ## Contacto y Licencia
 Proyecto de práctica sobre arquitectura de software biomedico.
 
+**No apto para uso clínico:** el validador de tratamientos es simulado y los datos no constituyen una guía de estadificación completa.
+
 ---
-**Última actualización:** 2026-03-04
-**Versión:** 2.2 (Reestructuración Frontend + Mejoras UI/UX)
+**Última actualización:** 2026-10-07
+**Versión:** 2.4 (Instalación con Docker + pipeline más robusto)
