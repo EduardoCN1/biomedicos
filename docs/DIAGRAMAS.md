@@ -11,7 +11,7 @@ flowchart LR
     subgraph Docker["docker compose"]
         Frontend["frontend<br/>nginx :5500"]
         API["api<br/>Flask + Waitress :5000"]
-        RabbitMQ[("rabbitmq<br/>:5672 / :15672")]
+        RabbitMQ[("rabbitmq<br/>:15672 administración")]
         Recommender["recommender"]
         Validator["ml-validator<br/>validador simulado"]
         Neo4j[("neo4j<br/>:7474 / :7687")]
@@ -99,6 +99,8 @@ flowchart TB
     RabbitMQ -->|healthy| Validator
     API -->|iniciado| Frontend
 ```
+
+Este orden se aplica con `docker compose up`. Cuando Docker arranca por su cuenta (al encender el equipo), levanta los servicios sin orden y estos reintentan la conexión hasta que Neo4j y RabbitMQ están listos; `seed` no se ejecuta.
 
 ## Modelo de Datos
 

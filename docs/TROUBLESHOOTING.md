@@ -51,7 +51,7 @@ docker compose up -d
 ```
 La página no se ve afectada por `API_PORT`, porque llama a la API a través de `/api`. Para `test-pipeline.ps1`, indicar el nuevo puerto: `.\scripts\test-pipeline.ps1 -ApiUrl http://localhost:5001`.
 
-b) **Resto de puertos (5672, 7474, 7687, 15672):** identificar el programa y cerrarlo:
+b) **Resto de puertos (7474, 7687, 15672):** identificar el programa y cerrarlo (en Windows, si ningún programa lo usa, ver el [problema 16](#16-windows-an-attempt-was-made-to-access-a-socket-in-a-way-forbidden-by-its-access-permissions)):
 ```powershell
 Get-Process -Id (Get-NetTCPConnection -LocalPort 7474 -State Listen).OwningProcess
 ```
@@ -157,7 +157,7 @@ Para comprobar desde el otro equipo si llega al puerto (Windows):
 Test-NetConnection <IP-del-servidor> -Port 5500
 ```
 
-Solo el puerto 5500 (la aplicación web) es accesible desde la red. La API (5000), Neo4j (7474/7687) y RabbitMQ (5672/15672) responden únicamente en el propio servidor, y `/api/pipeline/debug` está bloqueado en el proxy: es intencionado.
+Solo el puerto 5500 (la aplicación web) es accesible desde la red. La API (5000), Neo4j (7474/7687) y la consola de RabbitMQ (15672) responden únicamente en el propio servidor, y `/api/pipeline/debug` está bloqueado en el proxy: es intencionado.
 
 ---
 
@@ -187,6 +187,49 @@ El trabajo no llegó a completarse en 30 segundos. Revisar los registros que el 
 ```bash
 MSYS_NO_PATHCONV=1 docker compose run --rm --no-deps neo4j neo4j-admin database dump neo4j --to-path=/backups
 ```
+
+---
+
+## Arranque Automático
+
+### 15. Tras encender el equipo, la aplicación no responde
+
+**Causas y soluciones:**
+- **Todavía está arrancando:** esperar uno o dos minutos. Al arrancar Docker los servicios no siguen un orden, y reintentan la conexión hasta que Neo4j y RabbitMQ están listos.
+- **Docker no arrancó con el equipo:** en Linux, `sudo systemctl enable --now docker`. En Windows, activar el arranque de Docker Desktop al iniciar sesión, e iniciar sesión (ver [DOCKER.md](DOCKER.md#arranque-automático-al-encender-el-equipo)).
+- **Los contenedores se detuvieron o eliminaron a mano** antes de apagar (`docker compose stop` o `down`): no vuelven solos. Ejecutar `docker compose up -d`.
+- **Un contenedor no arrancó por un puerto reservado** (solo en Windows): ver el problema 16.
+
+Para ver qué servicio falta: `docker compose ps -a`.
+
+### 16. Windows: "An attempt was made to access a socket in a way forbidden by its access permissions"
+
+**Síntomas:** Tras reiniciar Windows, un servicio no arranca. `docker compose up -d` muestra un error como:
+```
+ports are not available: exposing port TCP 127.0.0.1:15672 -> 127.0.0.1:0:
+listen tcp4 127.0.0.1:15672: bind: An attempt was made to access a socket in a
+way forbidden by its access permissions.
+```
+
+**Causa:** Windows reservó para Hyper-V o WSL un rango de puertos que incluye uno del proyecto. Ningún programa lo usa, pero está reservado. Para comprobarlo:
+```powershell
+netsh interface ipv4 show excludedportrange protocol=tcp
+```
+
+**Solución (PowerShell como administrador):**
+- **Inmediata**, hasta el próximo reinicio: liberar las reservas y volver a levantar el proyecto.
+  ```powershell
+  docker desktop stop
+  net stop winnat
+  net start winnat
+  docker desktop start
+  docker compose up -d
+  ```
+- **Permanente:** restablecer el rango de puertos dinámicos de Windows y reiniciar (ver [DOCKER.md](DOCKER.md#windows)).
+  ```powershell
+  netsh int ipv4 set dynamic tcp start=49152 num=16384
+  netsh int ipv6 set dynamic tcp start=49152 num=16384
+  ```
 
 ---
 

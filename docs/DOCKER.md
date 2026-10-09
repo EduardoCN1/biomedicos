@@ -16,7 +16,7 @@ Esta guía describe cómo instalar y ejecutar el proyecto completo con Docker Co
 3. **Recursos del sistema:**
    - Al menos 4 GB de RAM asignados a Docker
    - Unos 2 GB de disco para las imágenes
-   - Puertos libres: 5000, 5500, 5672, 7474, 7687, 15672 (el 5000 y el 5500 se pueden cambiar, ver [Variables de entorno](#paso-2-opcional-crear-el-archivo-env))
+   - Puertos libres: 5000, 5500, 7474, 7687, 15672 (el 5000 y el 5500 se pueden cambiar, ver [Variables de entorno](#paso-2-opcional-crear-el-archivo-env))
    - Conexión a internet: la primera vez se descargan las imágenes, y la página carga Bootstrap, jQuery, Toastr y Font Awesome desde CDN
 
 ## Servicios Incluidos
@@ -30,7 +30,7 @@ El archivo `docker-compose.yml` define los siguientes servicios:
 | `recommender` | biomedicos-recommender | — | — | Consulta Neo4j y genera las recomendaciones |
 | `ml-validator` | biomedicos-ml-validator | — | — | Validador **simulado** de tratamientos (el modelo de ML real es trabajo futuro) |
 | `seed` | biomedicos-seed | — | — | Carga `data/*.csv` en Neo4j si está vacío y termina |
-| `rabbitmq` | biomedicos-rabbitmq | 5672 (AMQP) / 15672 (administración) | Solo este equipo | Gestor de mensajes entre la API y los microservicios |
+| `rabbitmq` | biomedicos-rabbitmq | 15672 (administración) | Solo este equipo | Gestor de mensajes entre la API y los microservicios. Su puerto AMQP (5672) no se publica: los servicios lo usan por la red interna de Docker |
 | `neo4j` | biomedicos-neo4j | 7474 (Browser) / 7687 (Bolt) | Solo este equipo | Base de datos de grafos (Neo4j 5) |
 
 - Solo la aplicación web (5500) es accesible desde la red. Los demás puertos se publican en `127.0.0.1`: responden en el propio equipo que ejecuta Docker, pero no desde otros. A través del proxy, `/api/pipeline/debug` está bloqueado, porque muestra los datos de todas las consultas.
@@ -195,11 +195,58 @@ MATCH (n) RETURN n LIMIT 25
 
 ```powershell
 docker compose up -d             # Iniciar (los datos de Neo4j se conservan)
-docker compose down              # Detener
+docker compose stop              # Detener (no vuelven a arrancar solos hasta el próximo 'up')
+docker compose down              # Detener y eliminar los contenedores
 docker compose logs -f           # Ver registros de todos los servicios
 docker compose logs -f api       # Ver registros de un servicio
 docker compose restart api       # Reiniciar un servicio
 ```
+
+No hace falta detener nada antes de apagar el equipo: al volver a arrancar Docker, los servicios se levantan solos (ver [Arranque Automático](#arranque-automático-al-encender-el-equipo)).
+
+## Arranque Automático al Encender el Equipo
+
+Los servicios tienen la política `restart: unless-stopped`: **cuando Docker arranca, vuelve a levantar los contenedores que estaban en marcha**, sin ejecutar `docker compose`. Para que un equipo que hace de servidor (por ejemplo, en un laboratorio) tenga la aplicación disponible cada vez que se enciende, solo hace falta que **Docker arranque con el equipo**. Esa configuración depende del sistema y se hace una sola vez.
+
+### Linux (recomendado para un servidor)
+
+```bash
+sudo systemctl enable --now docker    # Docker arranca con el equipo, sin iniciar sesión
+docker compose up -d --build          # Una sola vez, en la carpeta del proyecto
+```
+
+Comprobar: `systemctl is-enabled docker` debe responder `enabled`.
+
+### Windows
+
+Requiere permisos de administrador una vez:
+
+1. **Arranque de Docker Desktop:** en Docker Desktop, *Settings → General → «Start Docker Desktop when you sign in to your computer»*.
+2. **Rango de puertos dinámicos:** Windows reserva bloques de puertos para Hyper-V y WSL en cada arranque. Si su rango dinámico empieza en el 1024 (algunas instalaciones de Hyper-V o WSL lo dejan así), puede reservar un puerto del proyecto, por ejemplo el 5500 o el 15672, y ese contenedor no arrancará. Para comprobarlo:
+   ```powershell
+   netsh int ipv4 show dynamicport tcp
+   ```
+   Si «Puerto de inicio» es menor que 49152, restablecer el valor por defecto de Windows en PowerShell como administrador y reiniciar el equipo:
+   ```powershell
+   netsh int ipv4 set dynamic tcp start=49152 num=16384
+   netsh int ipv6 set dynamic tcp start=49152 num=16384
+   ```
+3. **Inicio de sesión:** Docker Desktop es una aplicación de usuario y solo arranca cuando **alguien inicia sesión en Windows**. En un equipo que nadie usa habría que configurar el inicio de sesión automático de una cuenta dedicada, con las implicaciones de seguridad que conlleva. Por eso, para un servidor desatendido es preferible Linux.
+4. Ejecutar `docker compose up -d --build` una sola vez en la carpeta del proyecto.
+
+### Comprobar que funciona
+
+1. Reiniciar el equipo (en Windows, iniciar sesión).
+2. Esperar uno o dos minutos y ejecutar `docker compose ps`: todos los servicios deben aparecer en marcha.
+3. Abrir la aplicación web.
+
+Al arrancar Docker, los servicios se levantan sin el orden ni las comprobaciones de salud de `docker compose up`. Durante el primer minuto la página puede devolver errores mientras Neo4j y RabbitMQ terminan de arrancar; los servicios reintentan la conexión solos. `seed` no se vuelve a ejecutar, porque los datos se conservan en el volumen.
+
+### Qué impide el arranque automático
+
+- **`docker compose down`** elimina los contenedores: Docker ya no tiene nada que levantar hasta el próximo `docker compose up -d`.
+- **`docker compose stop`** los detiene a propósito, y `unless-stopped` respeta esa decisión.
+- **Equipos que se restauran al reiniciar** (Deep Freeze o similares): se pierden Docker, las imágenes y los datos. Hay que excluir la instalación de Docker de la restauración.
 
 ## Aplicar Cambios de Código
 

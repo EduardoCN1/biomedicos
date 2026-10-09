@@ -63,7 +63,7 @@ biomedicos/
 | `recommender` | `biomedicos-app` | `services/recommender_service.py` | — |
 | `ml-validator` | `biomedicos-app` | `services/ml_validator_service.py` | — |
 | `seed` | `biomedicos-app` | `scripts/import_csv.py` | — |
-| `rabbitmq` | `rabbitmq:3-management` | — | 5672, 15672, solo `127.0.0.1` |
+| `rabbitmq` | `rabbitmq:3-management` | — | 15672 (administración), solo `127.0.0.1`; el 5672 (AMQP) solo en la red interna |
 | `neo4j` | `neo4j:5` | — | 7474, 7687, solo `127.0.0.1` |
 
 `api`, `recommender`, `ml-validator` y `seed` comparten la imagen `biomedicos-app`, construida una sola vez desde el `Dockerfile`; cada uno arranca con su propio comando.
@@ -100,6 +100,10 @@ Si el pipeline no completa la consulta (error al enviar, trabajo `failed` o 60 s
 2. `seed` valida los CSV y los importa si Neo4j está vacío; después termina.
 3. `api` y `recommender` arrancan cuando `seed` termina bien; `ml-validator`, cuando RabbitMQ está listo.
 4. `frontend` arranca después de `api`.
+
+### Arranque al encender el equipo
+
+Los servicios tienen `restart: unless-stopped`: cuando Docker arranca (por ejemplo, al encender el equipo) vuelve a levantar los que estaban en marcha, sin ejecutar `docker compose`. En ese caso no se sigue el orden anterior: la API, el recomendador y el validador reintentan la conexión con Neo4j y RabbitMQ hasta que están listos, y `seed` no se ejecuta porque los datos siguen en el volumen. Ver [DOCKER.md](DOCKER.md#arranque-automático-al-encender-el-equipo).
 
 ## Configuración
 
