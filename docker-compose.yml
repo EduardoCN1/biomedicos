@@ -5,6 +5,11 @@
 x-app: &app
   image: biomedicos-app
   pull_policy: never
+  restart: unless-stopped
+
+# restart: unless-stopped: cuando Docker arranca (por ejemplo, al encender el equipo) vuelve a
+# levantar los servicios que estaban en marcha, salvo los detenidos a mano con 'docker compose stop'.
+# 'seed' no lo usa: se ejecuta una vez en cada 'docker compose up' y termina.
 
 # Puertos: solo el de la aplicación web (frontend) es accesible desde la red. El resto se
 # publica en 127.0.0.1, es decir, solo desde el propio equipo que ejecuta Docker.
@@ -13,6 +18,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: biomedicos-rabbitmq
+    restart: unless-stopped
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
@@ -26,6 +32,7 @@ services:
   neo4j:
     image: neo4j:5
     container_name: biomedicos-neo4j
+    restart: unless-stopped
     ports:
       - "127.0.0.1:7474:7474"
       - "127.0.0.1:7687:7687"
@@ -117,6 +124,7 @@ services:
   frontend:
     image: nginx:alpine
     container_name: biomedicos-frontend
+    restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-5500}:80"
     volumes:
