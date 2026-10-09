@@ -210,7 +210,7 @@ Consecuencias:
 - **Trabajos en memoria:** se pierden al reiniciar la API, y solo puede haber una instancia de la API.
 - **Sin reintentos ni cola de mensajes fallidos (DLQ):** si un microservicio falla con un mensaje, avisa a la API y el mensaje se descarta.
 - **No se puede escalar con `docker compose up --scale`:** los servicios tienen `container_name` fijo. Para ejecutar varias réplicas de un microservicio habría que quitarlo; RabbitMQ repartiría los mensajes entre ellas.
-- **Seguridad pensada para entorno local:** `/pipeline/debug` no tiene autenticación, y RabbitMQ (`guest`/`guest`) y Neo4j (`neo4j`/`password`) usan credenciales por defecto.
+- **Seguridad pensada para entorno local:** RabbitMQ (`guest`/`guest`) y Neo4j (`neo4j`/`password`) usan credenciales por defecto, y la API no tiene autenticación. Para limitar el riesgo, solo la aplicación web (puerto 5500) es accesible desde la red: la API, Neo4j y RabbitMQ solo responden en el propio servidor, y `/api/pipeline/debug` está bloqueado en el proxy.
 - **Validador simulado** y **datos del paciente sin usar**, salvo la preferencia de cirugía.
 - **La página muestra como máximo 3 estadios** por consulta.
 
@@ -225,7 +225,7 @@ Consecuencias:
 
 - **Consola de RabbitMQ** (http://localhost:15672, `guest`/`guest`): en **Queues**, cada una de las tres colas debe tener 1 consumidor; si los mensajes se acumulan, el servicio que la consume está detenido o atascado.
 - **Registros:** `docker compose logs -f api recommender ml-validator`. Cada servicio indica cada trabajo procesado (`job_id=... enviado a validación`, `... validado y publicado`, `Resultado recibido para job_id=...`) y cada fallo.
-- **API:** `/pipeline/health` (RabbitMQ y consumidor) y `/pipeline/debug` (todos los trabajos).
+- **API:** `/pipeline/health` (RabbitMQ y consumidor) y `/pipeline/debug` (todos los trabajos; solo en `http://localhost:5000`, desde el propio servidor).
 - **Prueba de extremo a extremo:** `.\scripts\test-pipeline.ps1`.
 - **Publicar un mensaje a mano** (por ejemplo, para probar el aviso de fallo con un mensaje sin TNM), con la API de administración de RabbitMQ:
   ```bash

@@ -4,8 +4,8 @@ La API (Flask, servida con Waitress) es accesible de dos formas:
 
 | Base URL | Uso |
 |----------|-----|
-| `http://localhost:5500/api` | A través del proxy de nginx. Es la que usa la página web (`/api/...` en su mismo origen). |
-| `http://localhost:5000` | Acceso directo, para pruebas. El puerto se cambia con `API_PORT` en `.env`. |
+| `http://localhost:5500/api` | A través del proxy de nginx. Es la que usa la página web (`/api/...` en su mismo origen). Desde otro equipo de la red: `http://<IP-del-servidor>:5500/api`. |
+| `http://localhost:5000` | Acceso directo, para pruebas. Solo desde el propio servidor. El puerto se cambia con `API_PORT` en `.env`. |
 
 Los ejemplos de esta guía usan el acceso directo. Las respuestas son reales, capturadas del sistema en marcha con los datos de `data/*.csv`.
 
@@ -263,6 +263,8 @@ Indica si la API puede conectarse a RabbitMQ y si su consumidor de resultados es
 
 ## 7. GET `/pipeline/debug`
 Devuelve todos los trabajos guardados en memoria, con su resultado completo. Pensado para depuración: no tiene autenticación ni límite de tamaño.
+
+Solo está disponible en el acceso directo (`http://localhost:5000/pipeline/debug`, desde el propio servidor). A través del proxy (`/api/pipeline/debug`) responde `404`, para no exponer en la red los datos de las consultas.
 
 **Response:** 200 OK
 ```json

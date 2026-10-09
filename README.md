@@ -69,14 +69,16 @@ La primera vez tarda unos minutos. Compose construye la imagen del proyecto, esp
 
 Cuando termine, abre **http://localhost:5500**.
 
-| Servicio | Dirección | Credenciales |
-|----------|-----------|--------------|
-| Aplicación web | http://localhost:5500 | — |
-| API | http://localhost:5000 (también http://localhost:5500/api) | — |
-| Neo4j Browser | http://localhost:7474 | `neo4j` / `password` (o los de tu `.env`) |
-| RabbitMQ (administración) | http://localhost:15672 | `guest` / `guest` |
+| Servicio | Dirección | Accesible desde | Credenciales |
+|----------|-----------|-----------------|--------------|
+| Aplicación web | http://localhost:5500 | Este equipo y la red | — |
+| API | http://localhost:5000 (también http://localhost:5500/api) | Solo este equipo (y `/api` a través de la aplicación web) | — |
+| Neo4j Browser | http://localhost:7474 | Solo este equipo | `neo4j` / `password` (o los de tu `.env`) |
+| RabbitMQ (administración) | http://localhost:15672 | Solo este equipo | `guest` / `guest` |
 
-La aplicación web también se puede abrir desde otro equipo de la red, en `http://<IP-de-este-equipo>:5500`, si el cortafuegos permite el acceso a ese puerto.
+**Desde otro equipo de la misma red** se abre la aplicación web en `http://<IP-del-servidor>:5500`, donde la IP es la del **equipo que ejecuta Docker** (el servidor), no la del equipo que abre la página. Para averiguarla, en el servidor: `ipconfig` en Windows («Dirección IPv4») o `hostname -I` en Linux. Puede cambiar de un día a otro, porque la asigna el router. El cortafuegos del servidor debe permitir el acceso al puerto 5500.
+
+Solo la aplicación web es accesible desde la red. La API, Neo4j y RabbitMQ solo responden en el propio servidor, y `/api/pipeline/debug`, que muestra los datos de todas las consultas, está bloqueado en el proxy.
 
 El archivo `.env` es opcional; solo hace falta para cambiar la contraseña de Neo4j o los puertos de la aplicación web y de la API (ver [Variables de Entorno](#variables-de-entorno)).
 
@@ -170,7 +172,7 @@ Consulte la documentación apropiada según su caso de uso:
 
 ## Endpoints Disponibles
 
-  Accesibles en `http://localhost:5000` o, a través del proxy, en `http://localhost:5500/api`.
+  Accesibles en `http://localhost:5000` (solo desde el propio servidor) o, a través del proxy, en `http://<servidor>:5500/api` (también desde la red, salvo `/pipeline/debug`).
 
   | Método | Ruta | Descripción |
   |--------|------|-------------|
@@ -198,7 +200,7 @@ Consulte la documentación apropiada según su caso de uso:
   | `NEO4J_USER` | `neo4j` | Usuario de Neo4j |
   | `NEO4J_PASSWORD` | `password` | Contraseña de Neo4j (mínimo 8 caracteres) |
   | `FRONTEND_PORT` | `5500` | Puerto de la aplicación web en tu equipo |
-  | `API_PORT` | `5000` | Puerto de la API en tu equipo, para pruebas directas (la página usa `/api`) |
+  | `API_PORT` | `5000` | Puerto de la API en tu equipo, para pruebas directas desde el propio equipo (la página usa `/api`) |
 
   El resto de la configuración (URIs, colas de RabbitMQ y demás puertos) está fijada en `docker-compose.yml`.
 
@@ -270,6 +272,10 @@ Consulte la documentación apropiada según su caso de uso:
   ### Un puerto ya está en uso
   - **Aplicación web (5500) o API (5000):** cambia `FRONTEND_PORT` o `API_PORT` en `.env` y vuelve a ejecutar `docker compose up -d`. En macOS, el 5000 suele estar ocupado por el Receptor AirPlay.
   - **Otros puertos (5672, 7474, 7687, 15672):** libera el puerto cerrando el programa que lo usa.
+
+  ### No se abre la aplicación desde otro equipo
+  - Usa la IP del **servidor** (el equipo que ejecuta Docker), no la del equipo desde el que navegas.
+  - Ver el [problema 11 de TROUBLESHOOTING](docs/TROUBLESHOOTING.md#11-no-se-abre-la-aplicación-desde-otro-equipo-de-la-red).
 
   ### "Cannot connect to the Docker daemon"
   Docker Desktop no está abierto. Ábrelo, espera a que indique que está en ejecución y repite el comando.

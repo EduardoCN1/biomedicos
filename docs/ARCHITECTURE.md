@@ -58,15 +58,17 @@ biomedicos/
 
 | Servicio | Imagen | Código | Puerto en el equipo |
 |----------|--------|--------|---------------------|
-| `frontend` | `nginx:alpine` | `frontend/`, `nginx/default.conf` | 5500 (`FRONTEND_PORT`) |
-| `api` | `biomedicos-app` | `backend/` | 5000 (`API_PORT`) |
+| `frontend` | `nginx:alpine` | `frontend/`, `nginx/default.conf` | 5500 (`FRONTEND_PORT`), accesible desde la red |
+| `api` | `biomedicos-app` | `backend/` | 5000 (`API_PORT`), solo `127.0.0.1` |
 | `recommender` | `biomedicos-app` | `services/recommender_service.py` | — |
 | `ml-validator` | `biomedicos-app` | `services/ml_validator_service.py` | — |
 | `seed` | `biomedicos-app` | `scripts/import_csv.py` | — |
-| `rabbitmq` | `rabbitmq:3-management` | — | 5672, 15672 |
-| `neo4j` | `neo4j:5` | — | 7474, 7687 |
+| `rabbitmq` | `rabbitmq:3-management` | — | 5672, 15672, solo `127.0.0.1` |
+| `neo4j` | `neo4j:5` | — | 7474, 7687, solo `127.0.0.1` |
 
 `api`, `recommender`, `ml-validator` y `seed` comparten la imagen `biomedicos-app`, construida una sola vez desde el `Dockerfile`; cada uno arranca con su propio comando.
+
+Solo la aplicación web es accesible desde otros equipos de la red. Los demás puertos se publican en `127.0.0.1`, de modo que la API, Neo4j y RabbitMQ solo responden en el propio servidor; dentro de Docker, los servicios se comunican por su red interna sin depender de esos puertos.
 
 Ver [MICROSERVICIOS.md](MICROSERVICIOS.md) para el detalle de cada componente y el formato de los mensajes.
 
@@ -107,7 +109,7 @@ La configuración se pasa a los contenedores como variables de entorno desde `do
 |-------|-----|
 | `.env` (opcional) | `NEO4J_USER`, `NEO4J_PASSWORD`, `FRONTEND_PORT`, `API_PORT` (ver `.env.example`) |
 | `docker-compose.yml` | URIs de Neo4j y RabbitMQ, nombres de las colas, puertos internos |
-| `nginx/default.conf` | Ruta `/api/` y destino del proxy |
+| `nginx/default.conf` | Ruta `/api/`, destino del proxy y bloqueo de `/api/pipeline/debug` |
 | `frontend/js/entradas.js` | `API_URL = '/api'` (ruta relativa: no depende del host ni del puerto) |
 
 ## Dependencias Principales

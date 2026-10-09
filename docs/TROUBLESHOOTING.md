@@ -143,11 +143,27 @@ docker compose logs api recommender ml-validator
 - Comprobar que la API responde directamente: `Invoke-RestMethod http://localhost:5000/` debe devolver `"En ejecución"`.
 - Si se modificó `nginx/default.conf`, reiniciar nginx: `docker compose restart frontend`.
 
+### 11. No se abre la aplicación desde otro equipo de la red
+
+**Síntomas:** Desde otro equipo, el navegador indica que la dirección «rechazó la conexión» o tarda y no carga.
+
+**Causas y soluciones:**
+- **Se usó la IP equivocada.** Hay que usar la del **servidor**, el equipo que ejecuta Docker, no la del equipo que abre la página. En el servidor: `ipconfig` en Windows («Dirección IPv4») o `hostname -I` en Linux. La asigna el router y puede cambiar, así que conviene comprobarla cada vez.
+- **El cortafuegos del servidor bloquea el puerto 5500.** En Windows, Docker Desktop crea una regla de entrada («Docker Desktop Backend»); si falta o no cubre el perfil de la red, hay que permitir el puerto. En Linux con `ufw`: `sudo ufw allow 5500/tcp`.
+- **La red aísla a los dispositivos entre sí.** Muchas redes Wi-Fi de universidades o invitados lo hacen. No depende del proyecto: usar otra red (por ejemplo, la cableada del laboratorio) o consultarlo con los técnicos.
+
+Para comprobar desde el otro equipo si llega al puerto (Windows):
+```powershell
+Test-NetConnection <IP-del-servidor> -Port 5500
+```
+
+Solo el puerto 5500 (la aplicación web) es accesible desde la red. La API (5000), Neo4j (7474/7687) y RabbitMQ (5672/15672) responden únicamente en el propio servidor, y `/api/pipeline/debug` está bloqueado en el proxy: es intencionado.
+
 ---
 
 ## Tests
 
-### 11. Fallan los tests de `pytest`
+### 12. Fallan los tests de `pytest`
 
 Los tests usan Neo4j con datos. Levantar el proyecto antes de ejecutarlos:
 ```powershell
@@ -155,7 +171,7 @@ docker compose up -d
 docker compose run --rm api python -m pytest tests -v
 ```
 
-### 12. `test-pipeline.ps1` termina con "TIMEOUT"
+### 13. `test-pipeline.ps1` termina con "TIMEOUT"
 
 El trabajo no llegó a completarse en 30 segundos. Revisar los registros que el propio script muestra en el paso 3 y el estado de los servicios (ver [problema 7](#7-aviso-no-se-pudo-completar-la-evaluación-en-la-página)).
 
@@ -163,7 +179,7 @@ El trabajo no llegó a completarse en 30 segundos. Revisar los registros que el 
 
 ## Git Bash
 
-### 13. Error: "C:/Program Files/Git/... is not an existing directory"
+### 14. Error: "C:/Program Files/Git/... is not an existing directory"
 
 **Causa:** Git Bash convierte los argumentos que empiezan por `/` en rutas de Windows, por ejemplo `--to-path=/backups`.
 
