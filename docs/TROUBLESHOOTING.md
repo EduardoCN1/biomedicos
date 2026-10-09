@@ -51,7 +51,7 @@ docker compose up -d
 ```
 La página no se ve afectada por `API_PORT`, porque llama a la API a través de `/api`. Para `test-pipeline.ps1`, indicar el nuevo puerto: `.\scripts\test-pipeline.ps1 -ApiUrl http://localhost:5001`.
 
-b) **Resto de puertos (5672, 7474, 7687, 15672):** identificar el programa y cerrarlo:
+b) **Resto de puertos (7474, 7687, 15672):** identificar el programa y cerrarlo (en Windows, si ningún programa lo usa, ver el [problema 16](#16-windows-an-attempt-was-made-to-access-a-socket-in-a-way-forbidden-by-its-access-permissions)):
 ```powershell
 Get-Process -Id (Get-NetTCPConnection -LocalPort 7474 -State Listen).OwningProcess
 ```
@@ -157,7 +157,7 @@ Para comprobar desde el otro equipo si llega al puerto (Windows):
 Test-NetConnection <IP-del-servidor> -Port 5500
 ```
 
-Solo el puerto 5500 (la aplicación web) es accesible desde la red. La API (5000), Neo4j (7474/7687) y RabbitMQ (5672/15672) responden únicamente en el propio servidor, y `/api/pipeline/debug` está bloqueado en el proxy: es intencionado.
+Solo el puerto 5500 (la aplicación web) es accesible desde la red. La API (5000), Neo4j (7474/7687) y la consola de RabbitMQ (15672) responden únicamente en el propio servidor, y `/api/pipeline/debug` está bloqueado en el proxy: es intencionado.
 
 ---
 

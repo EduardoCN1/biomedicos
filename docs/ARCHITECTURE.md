@@ -63,7 +63,7 @@ biomedicos/
 | `recommender` | `biomedicos-app` | `services/recommender_service.py` | — |
 | `ml-validator` | `biomedicos-app` | `services/ml_validator_service.py` | — |
 | `seed` | `biomedicos-app` | `scripts/import_csv.py` | — |
-| `rabbitmq` | `rabbitmq:3-management` | — | 5672, 15672, solo `127.0.0.1` |
+| `rabbitmq` | `rabbitmq:3-management` | — | 15672 (administración), solo `127.0.0.1`; el 5672 (AMQP) solo en la red interna |
 | `neo4j` | `neo4j:5` | — | 7474, 7687, solo `127.0.0.1` |
 
 `api`, `recommender`, `ml-validator` y `seed` comparten la imagen `biomedicos-app`, construida una sola vez desde el `Dockerfile`; cada uno arranca con su propio comando.

@@ -43,7 +43,7 @@ Si el pipeline falla o no responde en 60 segundos, la página **no muestra trata
 | **recommender** | — | Consulta Neo4j y genera las recomendaciones | Python, driver de Neo4j |
 | **ml-validator** | — | Valida los tratamientos (simulado) | Python |
 | **seed** | — | Valida y carga los CSV en Neo4j al arrancar | Python |
-| **rabbitmq** | 5672 / 15672 | Mensajería entre servicios | RabbitMQ 3 |
+| **rabbitmq** | 15672 (administración) | Mensajería entre servicios | RabbitMQ 3 |
 | **neo4j** | 7474 / 7687 | Base de datos de grafos | Neo4j 5 |
 
 Ver [MICROSERVICIOS.md](docs/MICROSERVICIOS.md) para el detalle del flujo, las colas y los mensajes, y [DIAGRAMAS.md](docs/DIAGRAMAS.md) para los diagramas.
@@ -278,7 +278,7 @@ Consulte la documentación apropiada según su caso de uso:
 
   ### Un puerto ya está en uso
   - **Aplicación web (5500) o API (5000):** cambia `FRONTEND_PORT` o `API_PORT` en `.env` y vuelve a ejecutar `docker compose up -d`. En macOS, el 5000 suele estar ocupado por el Receptor AirPlay.
-  - **Otros puertos (5672, 7474, 7687, 15672):** libera el puerto cerrando el programa que lo usa.
+  - **Otros puertos (7474, 7687, 15672):** libera el puerto cerrando el programa que lo usa. En Windows, si ningún programa lo usa, puede estar reservado por el sistema (ver [problema 16 de TROUBLESHOOTING](docs/TROUBLESHOOTING.md#16-windows-an-attempt-was-made-to-access-a-socket-in-a-way-forbidden-by-its-access-permissions)).
 
   ### No se abre la aplicación desde otro equipo
   - Usa la IP del **servidor** (el equipo que ejecuta Docker), no la del equipo desde el que navegas.

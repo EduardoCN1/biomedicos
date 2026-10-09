@@ -11,7 +11,7 @@ flowchart LR
     subgraph Docker["docker compose"]
         Frontend["frontend<br/>nginx :5500"]
         API["api<br/>Flask + Waitress :5000"]
-        RabbitMQ[("rabbitmq<br/>:5672 / :15672")]
+        RabbitMQ[("rabbitmq<br/>:15672 administración")]
         Recommender["recommender"]
         Validator["ml-validator<br/>validador simulado"]
         Neo4j[("neo4j<br/>:7474 / :7687")]

@@ -4,6 +4,7 @@
 
 - **Arranque automático:** `rabbitmq`, `neo4j`, `api`, `recommender`, `ml-validator` y `frontend` tienen la política `restart: unless-stopped`; cuando Docker arranca (por ejemplo, al encender el equipo) los vuelve a levantar sin ejecutar `docker compose`. `DOCKER.md` explica cómo configurar un servidor para que Docker arranque con el equipo en Linux y en Windows, incluido el ajuste del rango de puertos dinámicos de Windows, que puede reservar puertos del proyecto al arrancar.
 - **Solo la aplicación web es accesible desde la red:** la API, Neo4j y RabbitMQ se publican en `127.0.0.1` (solo desde el propio servidor), y `/api/pipeline/debug`, que muestra los datos de todas las consultas, está bloqueado en el proxy.
+- **El puerto AMQP de RabbitMQ (5672) deja de publicarse:** solo lo usan los servicios, por la red interna de Docker. Es un puerto menos que puede chocar con las reservas de Windows.
 - **Documentación:** para abrir la aplicación desde otro equipo se usa la IP del servidor; nuevos problemas en `TROUBLESHOOTING.md` (acceso desde otro equipo, arranque tras encender y puertos reservados en Windows).
 
 ### Actualización desde v2.4
