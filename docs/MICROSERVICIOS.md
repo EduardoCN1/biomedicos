@@ -2,694 +2,243 @@
 
 ## Visión General
 
-El proyecto utiliza una **arquitectura de microservicios desacoplados** que se comunican a través de **RabbitMQ**, un message broker confiable y escalable. En lugar de procesar todo en un único script, el trabajo se divide en servicios independientes que se comunican a través de colas de mensajes.
-
-### Beneficios de la Arquitectura de Microservicios
-
-- **Escalabilidad:** Cada servicio puede crecer independientemente sin afectar a otros
-- **Resiliencia:** Si un servicio falla, otros continúan funcionando correctamente
-- **Asincronía:** Los servicios procesan en paralelo sin bloqueos de espera
-- **Mantenibilidad:** Código modular y especializado por dominio
-- **Flexibilidad:** Fácil agregar, modificar o remover servicios sin impactar el sistema completo
-- **Independencia:** Cada servicio puede usar sus propias tecnologías y bases de datos
-
-## Topología de Servicios
+Cuando el usuario pulsa **Consultar**, la página no espera a que se calcule el resultado: la API registra un trabajo, lo publica en RabbitMQ y responde al instante. Dos microservicios lo procesan en cadena (primero el **recomendador**, después el **validador**) y el resultado vuelve a la API, que la página consulta periódicamente hasta que está listo.
 
 ```
-                    ┌──────────────────────────────────────────────┐
-                    │        Frontend (puerto 5500)                │
-                    │      HTML + JavaScript + CSS                │
-                    └────────────────┬─────────────────────────────┘
-                                     │ HTTP REST POST /pipeline/submit
-                                     ▼
-                    ┌──────────────────────────────────────────────┐
-                    │    API Principal - biomedicos-api             │
-                    │         (puerto 5000)                        │
-                    │   • POST /pipeline/submit                    │
-                    │   • GET /pipeline/result/<job_id>            │
-                    │   • GET /pipeline/health                     │
-                    │   • Orquestación de eventos                  │
-                    └────────────────┬─────────────────────────────┘
-                                     │
-                     ┌───────────────┴───────────────┐
-                     │   RabbitMQ (puerto 5672)      │
-                     │   Message Broker              │
-                     │   • tnm.recommendation.request│
-                     │   • tnm.validation.request    │
-                     │   • tnm.validation.result     │
-                     │   • Admin (puerto 15672)      │
-                     └──────┬──────────────────┬─────┘
-                            │                  │
-                 ┌──────────▼──────┐  ┌───────▼──────────┐
-                 │  Recommender    │  │  ML Validator    │
-                 │  (puerto 5001)  │  │  (puerto 5002)   │
-                 │                 │  │                  │
-                 │ • Consulta Neo4j│  │ • Valida         │
-                 │ • Genera ttos   │  │   recomendaciones│
-                 │ • ML models     │  │ • Filtra riesgos │
-                 └────────────────┘  └──────────────────┘
-                         │                    │
-                         └────────┬───────────┘
-                                  │
-                                  ▼
-                    ┌─────────────────────────────┐
-                    │   Neo4j (puerto 7474/7687)  │
-                    │   • Base de datos TNM        │
-                    │   • Nodos y relaciones       │
-                    │   • Consultas Cypher         │
-                    └─────────────────────────────┘
+Página ──POST /api/pipeline/submit──► API ──► [tnm.recommendation.request] ──► Recomendador ◄──► Neo4j
+  ▲                                    ▲                                            │
+  │                                    │                                            ▼
+  └──GET /api/pipeline/result/<id>─────┤                                 [tnm.validation.request]
+       (cada 2 s)                      │                                            │
+                                       │                                            ▼
+                                       └──────── [tnm.validation.result] ◄──── Validador (simulado)
 ```
 
-## Componentes Técnicos
+El validador actual es **simulado**: aplica una regla por palabras clave, no un modelo de aprendizaje automático. Sustituirlo por un modelo real es trabajo futuro (ver [más abajo](#sustituirlo-por-un-modelo-de-ml-real-trabajo-futuro)).
 
-### Docker y Docker Compose
+Ver [DIAGRAMAS.md](DIAGRAMAS.md) para los diagramas de arquitectura y de secuencia, y [DOCKER.md](DOCKER.md) para los contenedores y puertos.
 
-**¿Qué es Docker?**
+## Servicios
 
-Docker es un sistema de contenedores que empaqueta una aplicación con todas sus dependencias en una "máquina virtual ligera". Esto garantiza que funcione identicamente en Windows, Mac y Linux.
+| Servicio | Código | Función |
+|----------|--------|---------|
+| `frontend` | `frontend/`, `nginx/default.conf` | nginx: sirve la página y reenvía `/api/...` a la API |
+| `api` | `backend/api.py` | Recibe las consultas, publica los trabajos, recoge los resultados y los sirve a la página |
+| `recommender` | `services/recommender_service.py` | Consulta Neo4j y genera las recomendaciones de cada estadio |
+| `ml-validator` | `services/ml_validator_service.py` | Evalúa cada tratamiento (validador simulado) |
+| `rabbitmq` | — | Transporta los mensajes entre la API y los microservicios |
+| `neo4j` | — | Grafo con los estadios, pruebas y tratamientos |
+| `seed` | `scripts/import_csv.py` | Carga los datos en Neo4j al arrancar (no participa en las consultas) |
 
-**¿Qué es Docker Compose?**
+`recommender` y `ml-validator` no tienen API HTTP ni puertos publicados: solo se comunican a través de RabbitMQ.
 
-Docker Compose es una herramienta que orquesta múltiples contenedores. El archivo `docker-compose.yml` define:
-- Qué imágenes usar
-- Puertos a exponer
-- Variables de entorno
-- Dependencias entre servicios
-- Volúmenes de almacenamiento
+## Flujo de una Consulta
 
-**Estructura del docker-compose.yml:**
+1. **Página** (`frontend/js/entradas.js`): comprueba que estén completos edad, sexo, altura, peso, T, N y M, y envía `POST /api/pipeline/submit` con los valores TNM y un objeto `context` con los datos del paciente.
+2. **nginx** reenvía la petición al servicio `api`.
+3. **API**: genera un `job_id` (UUID), guarda el trabajo en memoria con estado `processing`, publica un mensaje en `tnm.recommendation.request` y responde `202` con el `job_id`.
+4. **Recomendador**: consume el mensaje, consulta Neo4j y, si `context.surgery_preference` es `"No"`, quita los tratamientos quirúrgicos (Surgery, Lumpectomy, Mastectomy) y descarta los estadios que se queden sin tratamientos. Publica el resultado en `tnm.validation.request`.
+5. **Validador**: evalúa cada tratamiento y publica el resultado final en `tnm.validation.result`.
+6. **API**: un hilo consumidor recibe el resultado y marca el trabajo como `completed`.
+7. **Página**: consulta `GET /api/pipeline/result/<job_id>` cada 2 segundos (hasta 30 intentos, 60 segundos). Cuando el estado es `completed`, vuelve a aplicar el filtro de cirugía (redundante, por seguridad) y muestra `final_recommendations`: **como máximo los 3 primeros estadios**, con sus pruebas y tratamientos.
 
-```yaml
-version: '3.8'
-
-services:
-  rabbitmq:
-    image: rabbitmq:3-management
-    ports:
-      - "5672:5672"      # Puerto AMQP (comunicación entre servicios)
-      - "15672:15672"    # Puerto Web (panel de administración)
-    
-  neo4j:
-    image: neo4j:latest
-    ports:
-      - "7474:7474"      # Puerto HTTP (interfaz web)
-      - "7687:7687"      # Puerto Bolt (protocolo binario)
-    environment:
-      - NEO4J_AUTH=neo4j/password
-    
-  api:
-    build: .             # Construye desde Dockerfile
-    ports:
-      - "5000:5000"
-    depends_on:
-      - rabbitmq
-      - neo4j
-    environment:
-      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-      - NEO4J_URI=neo4j://neo4j:7687
-    
-  recommender:
-    build: .
-    command: python services/recommender_service.py
-    depends_on:
-      - rabbitmq
-      - neo4j
-    
-  ml-validator:
-    build: .
-    command: python services/ml_validator_service.py
-    depends_on:
-      - rabbitmq
-```
-
-**Red Interna de Docker:**
-
-Docker crea una red interna donde los servicios pueden comunicarse usando sus nombres:
-- `rabbitmq:5672` → Resuelve automáticamente a la IP del contenedor RabbitMQ
-- `neo4j:7687` → Resuelve automáticamente a la IP del contenedor Neo4j
-
-### RabbitMQ - Message Broker
-
-**¿Qué es RabbitMQ?**
-
-RabbitMQ es un sistema de colas (queues) que almacena y distribuye mensajes entre productores y consumidores. Funciona de forma asincrónica: no requiere que el consumidor esté disponible en el momento de la publicación.
-
-**Modelo de Comunicación:**
-
-```
-Productor (publica)
-         ↓
-   [COLA]  (almacena mensajes)
-         ↓
-Consumidor (consume)
-```
-
-**Ventajas:**
-- Desacoplamiento: El productor no conoce al consumidor
-- Confiabilidad: Los mensajes se guardan si el consumidor falla
-- Escalabilidad: Múltiples consumidores pueden procesar mensajes en paralelo
-
-### Neo4j - Base de Datos de Grafos
-
-**¿Qué es Neo4j?**
-
-Neo4j es una base de datos especializada en almacenar y consultar grafos (nodos conectados por relaciones). Es perfecta para datos médicos donde hay muchas relaciones complejas.
-
-**Nuestro Modelo TNM:**
-
-```
-T_Stage_Finding (T1, T2, T3...)
-        │
-        └─[Has_Stage]──> Stage (IIIA, IIIB...)
-                              │
-                              ├─[Has_Treatment_Option] → Treatment
-                              └─[Has_Recommended_Test] → Test
-
-N_Stage_Finding (N0, N1, N2...)
-        │
-        └─[Has_Stage]──> Stage (mismos nodos)
-
-M_Stage_Finding (M0, M1...)
-        │
-        └─[Has_Stage]──> Stage (mismos nodos)
-```
-
-**Ejemplo de Consulta Cypher:**
-
-```cypher
-MATCH (t:T_Stage_Finding {label: "T1"}),
-      (n:N_Stage_Finding {label: "N0"}),
-      (m:M_Stage_Finding {label: "M0"})
-MATCH (t)-[:Has_Stage]->(stage),
-      (n)-[:Has_Stage]->(stage),
-      (m)-[:Has_Stage]->(stage)
-MATCH (stage)-[:Has_Treatment_Option]->(treatment),
-      (stage)-[:Has_Recommended_Test]->(test)
-RETURN stage.label, treatment.label, test.label
-```
-
-### Servicios Python
-
-#### **backend/api.py - API Gateway**
-
-**Responsabilidades:**
-1. Recibir solicitudes HTTP del frontend
-2. Validar datos TNM
-3. Publicar mensajes en RabbitMQ (cola: `tnm.recommendation.request`)
-4. Escuchar respuestas en RabbitMQ (cola: `tnm.validation.result`)
-5. Mantener estado de trabajos (jobs)
-6. Retornar resultados a través de polling
-
-**Endpoints:**
-
-| Método | Ruta | Parámetros | Descripción |
-|--------|------|-----------|-------------|
-| POST | `/pipeline/submit` | `{"tnm": {"t_label": "T1", "n_label": "N0", "m_label": "M0"}}` | Inicia procesamiento asincrónico, retorna `job_id` |
-| GET | `/pipeline/result/<job_id>` | `job_id` (path parameter) | Obtiene resultado cuando esté listo |
-| GET | `/pipeline/health` | - | Verifica estado del pipeline (RabbitMQ, consumidores) |
-
-**Ejemplo de Solicitud:**
-
-```bash
-curl -X POST http://localhost:5000/pipeline/submit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tnm": {
-      "t_label": "T1",
-      "n_label": "N0",
-      "m_label": "M0"
-    }
-  }'
-```
-
-**Respuesta (HTTP 202 Accepted):**
-
-```json
-{
-  "job_id": "620d271b-30ea-4e8e-aad9-35457dba1df0",
-  "status": "processing"
-}
-```
-
-**Polling para Obtener Resultado:**
-
-```bash
-curl http://localhost:5000/pipeline/result/620d271b-30ea-4e8e-aad9-35457dba1df0
-```
-
-**Respuesta cuando está listo (HTTP 200):**
-
-```json
-{
-  "job_id": "620d271b-30ea-4e8e-aad9-35457dba1df0",
-  "status": "completed",
-  "result": {
-    "stage": "IA",
-    "recommendations": ["Surgery", "Hormone Therapy"],
-    "tests": ["IHC", "ER/PR"]
-  }
-}
-```
-
-#### **services/recommender_service.py - Servicio Recomendador**
-
-**Responsabilidades:**
-
-1. Conectarse a RabbitMQ y escuchar la cola `tnm.recommendation.request`
-2. Para cada mensaje recibido:
-   - Extraer el `job_id` y valores TNM
-   - Conectar a Neo4j
-   - Ejecutar consulta Cypher para obtener opciones de tratamiento
-   - Publicar resultados en la cola `tnm.validation.request`
-
-**Pseudocódigo:**
-
-```python
-while True:
-    mensaje = canal_rabbitmq.consumir("tnm.recommendation.request")
-    
-    job_id = mensaje["job_id"]
-    t_label = mensaje["tnm"]["t_label"]
-    n_label = mensaje["tnm"]["n_label"]
-    m_label = mensaje["tnm"]["m_label"]
-    
-    # Conectar a Neo4j y ejecutar consulta
-    neo4j = Neo4JDatabase()
-    resultados = neo4j.obtener_recomendaciones(t_label, n_label, m_label)
-    
-    # Publicar en la siguiente cola
-    canal_rabbitmq.publicar("tnm.validation.request", {
-        "job_id": job_id,
-        "recommendations": resultados
-    })
-```
-
-#### **services/ml_validator_service.py - Servicio Validador**
-
-**Responsabilidades:**
-
-1. Conectarse a RabbitMQ y escuchar la cola `tnm.validation.request`
-2. Para cada recomendación recibida:
-   - Validar cada opción de tratamiento
-   - Filtrar rechazados (experimentales, riesgosos)
-   - Publicar solo las aprobadas en la cola `tnm.validation.result`
-
-**Lógica de Validación (Actualmente Mock, Listo para ML Real):**
-
-```python
-def evaluar_tratamiento(opcion):
-    # Pseudocodigo: rechazar si contiene ciertos términos
-    palabras_rechazadas = ["experimental", "no recomendado", "alto riesgo"]
-    
-    if any(palabra in opcion.lower() for palabra in palabras_rechazadas):
-        return False  # Rechazar
-    return True       # Aprobar
-```
-
-**Reemplazar con ML Real:**
-
-```python
-# Simplemente cambiar la función a:
-def evaluar_tratamiento(opcion):
-    # Cargar modelo entrenado
-    probabilidad = ml_model.predict(opcion)
-    return probabilidad > 0.75  # Si probabilidad > 75% → aprobar
-```
-
-### Frontend (JavaScript)
-
-**Archivo: `frontend/js/entradas.js`**
-
-**Flujo:**
-
-1. Usuario llena formulario TNM (T, N, M)
-2. Hace click en "Enviar"
-3. JavaScript envía `POST /pipeline/submit`
-4. Obtiene `job_id`
-5. Inicia polling cada 2 segundos a `GET /pipeline/result/<job_id>`
-6. Cuando `status === "completed"`, muestra resultados
-7. Fallback: Si microservicios fallan, llama directamente a `GET /get_stage_info`
-
-```javascript
-// Pseudocódigo
-const respuesta = await fetch("http://localhost:5000/pipeline/submit", {
-    method: "POST",
-    body: JSON.stringify({
-        tnm: {
-            t_label: "T1",
-            n_label: "N0",
-            m_label: "M0"
-        }
-    })
-});
-
-const { job_id } = await respuesta.json();
-
-// Iniciar polling
-const poll = setInterval(async () => {
-    const resultado = await fetch(`/pipeline/result/${job_id}`);
-    const datos = await resultado.json();
-    
-    if (datos.status === "completed") {
-        mostrarResultados(datos.result);
-        clearInterval(poll);
-    }
-}, 2000);  // Cada 2 segundos
-```
-
-## Topología de Servicios
+Si algo falla por el camino, la página no muestra tratamientos (ver [Si la evaluación no se completa](#si-la-evaluación-no-se-completa)).
 
 ## Colas de RabbitMQ
 
-Las colas implementan un patrón **productor-consumidor**:
+| Cola | Publica | Consume | Contenido |
+|------|---------|---------|-----------|
+| `tnm.recommendation.request` | API | recommender | Solicitud: TNM y datos del paciente |
+| `tnm.validation.request` | recommender | ml-validator | Recomendaciones sin validar |
+| `tnm.validation.result` | ml-validator (y cualquier microservicio que falle) | API | Resultado final o aviso de fallo |
 
-### 1. `requests` (Request Queue)
-- **Publicador**: API Principal
-- **Consumidor**: Validator + Recommender
-- **Contenido**: Datos del formulario del usuario
-- **Propósito**: Distribuir tareas de validación y recomendación
+- Se usa el exchange por defecto de RabbitMQ: cada mensaje se publica directamente en la cola por su nombre.
+- Las colas son durables y los mensajes persistentes (`delivery_mode=2`): sobreviven a un reinicio de RabbitMQ.
+- Los microservicios procesan los mensajes de uno en uno (`prefetch_count=1`); el consumidor de la API, de diez en diez.
+- Cada mensaje se confirma (`ack`) al terminar de procesarlo, también si falla: no se reintenta.
+- Los nombres de las colas se configuran con variables de entorno (`RECOMMENDATION_REQUEST_QUEUE`, `VALIDATION_REQUEST_QUEUE`, `VALIDATION_RESULT_QUEUE`), fijadas en `docker-compose.yml`.
 
-```json
-{
-  "request_id": "uuid-123",
-  "user_id": "user-456",
-  "timestamp": "2026-05-05T10:30:00Z",
-  "t_label": "T2",
-  "n_label": "N1",
-  "m_label": "M0",
-  "patient_data": {
-    "edad": 45,
-    "genero": "F",
-    "historial": "cancer_mama"
-  }
-}
-```
+## Formato de los Mensajes
 
-### 2. `validations` (Validation Results)
-- **Publicador**: ML Validator
-- **Consumidor**: API Principal
-- **Contenido**: Resultados de validación
-- **Propósito**: Retornar validaciones al API
+### `tnm.recommendation.request` (API → recomendador)
 
 ```json
 {
-  "request_id": "uuid-123",
-  "status": "valid",
-  "errors": [],
-  "warnings": ["TNM stage might be unusual for age"],
-  "validation_score": 0.95
-}
-```
-
-### 3. `recommendations` (Recommendation Results)
-- **Publicador**: Recommender Service
-- **Consumidor**: API Principal
-- **Contenido**: Recomendaciones basadas en ML
-- **Propósito**: Retornar recomendaciones al API
-
-```json
-{
-  "request_id": "uuid-123",
-  "recommended_tests": ["IHC", "ER/PR", "HER2"],
-  "treatment_options": ["Cirugía", "Radioterapia", "Hormonoterapia"],
-  "confidence": 0.88,
-  "ml_model_version": "v1.2.3"
-}
-```
-
-### 4. `responses` (Final Response Queue)
-- **Publicador**: API Principal
-- **Consumidor**: Frontend (vía polling AJAX)
-- **Contenido**: Respuesta completa (validación + recomendación + datos Neo4j)
-- **Propósito**: Enviar resultado final al usuario
-
-```json
-{
-  "request_id": "uuid-123",
-  "status": "success",
-  "stage_info": {
-    "stage": "IIIA",
-    "recommended_tests": ["IHC", "ER/PR"],
-    "treatment_options": ["Cirugía", "Quimioterapia"]
+  "job_id": "2f501371-e88b-4d59-8034-30f4d47f28ef",
+  "tnm": {"t_label": "T1", "n_label": "N0", "m_label": "M0"},
+  "context": {
+    "edad": "45", "sexo": "Femenino", "peso": "60", "talla": "165",
+    "RP": "Positivo", "RE": "Positivo", "HER2": "Negativo", "Grade": "II",
+    "surgery_preference": "No"
   },
-  "validation": {
-    "status": "valid",
-    "score": 0.95
-  },
-  "ml_recommendations": {
-    "tests": ["IHC", "ER/PR", "HER2"],
-    "confidence": 0.88
-  }
+  "timestamp": 1791434124
 }
 ```
 
-## Flujo de Ejecución
+`context` contiene lo que envía la página. De todos sus campos, solo `surgery_preference` influye en el resultado.
 
-### Paso 1: Usuario Envía Formulario
-```
-Frontend
-  ↓ (fetch/AJAX POST /entradas)
-API (recibe JSON)
-```
+### `tnm.validation.request` (recomendador → validador)
 
-### Paso 2: API Publica Evento
-```
-API
-  ↓ (publica a cola 'requests')
-RabbitMQ
-```
-
-### Paso 3: Validator Procesa
-```
-RabbitMQ (cola 'requests')
-  ↓ (consume)
-ML Validator
-  ↓ (valida patrones TNM)
-RabbitMQ (publica a cola 'validations')
+```json
+{
+  "job_id": "2f501371-e88b-4d59-8034-30f4d47f28ef",
+  "tnm": {"t_label": "T1", "n_label": "N0", "m_label": "M0"},
+  "recommendations": [
+    {
+      "Stage": "Stage IIA",
+      "RecommendedTests": ["Receptor Testing", "Mammogram", "Lymph Node Biopsy"],
+      "TreatmentOptions": ["Endocrine Therapy", "Radiation Therapy"]
+    }
+  ],
+  "context": {"...": "igual que en la solicitud"},
+  "timestamp": 1791434125
+}
 ```
 
-### Paso 4: Recommender Procesa
-```
-RabbitMQ (cola 'requests')
-  ↓ (consume)
-Recommender
-  ↓ (ejecuta modelos ML)
-RabbitMQ (publica a cola 'recommendations')
-```
+### `tnm.validation.result` (validador → API)
 
-### Paso 5: API Agrega Resultados
-```
-RabbitMQ (colas 'validations' + 'recommendations')
-  ↓ (consume ambas)
-API
-  ↓ (consulta Neo4j para datos estadios)
-API
-  ↓ (publica respuesta final a cola 'responses')
-RabbitMQ
+Cuando todo va bien, el validador publica el resultado completo: `recommendations`, `final_recommendations`, `validation_details`, `summary` y `model`. Es el mismo objeto que devuelve la API en el campo `result` de [`/pipeline/result`](API.md#5-get-pipelineresultjob_id).
+
+Cuando un microservicio no puede procesar un trabajo, publica en esta misma cola un aviso de fallo, y la API marca el trabajo como `failed`:
+
+```json
+{
+  "job_id": "2f501371-e88b-4d59-8034-30f4d47f28ef",
+  "status": "failed",
+  "error": "recommender: Cannot resolve address neo4j:7687",
+  "timestamp": 1791434130
+}
 ```
 
-### Paso 6: Frontend Recibe Respuesta
-```
-RabbitMQ (cola 'responses')
-  ↓ (polling AJAX cada 1-2 segundos)
-Frontend
-  ↓ (actualiza DOM, muestra resultados)
-Usuario (ve recomendaciones + tests + tratamientos)
-```
+El prefijo de `error` indica el servicio que falló (`recommender:` o `ml-validator:`). Si el mensaje ni siquiera tiene `job_id`, el fallo solo queda en los registros del servicio.
 
-## Configuración de RabbitMQ
+## Componentes
 
-### Variables de Entorno (.env)
+### `backend/api.py`: API
 
-```ini
-# RabbitMQ Broker
-RABBITMQ_HOST=rabbitmq          # o 'localhost' si es local
-RABBITMQ_PORT=5672              # Puerto AMQP
-RABBITMQ_USER=guest             # Usuario por defecto
-RABBITMQ_PASSWORD=guest         # Contraseña por defecto
-RABBITMQ_VHOST=/                # Virtual host
+- Expone los endpoints descritos en [API.md](API.md).
+- Al enviar al pipeline solo comprueba que lleguen T, N y M; no valida sus valores.
+- Guarda los trabajos en un diccionario en memoria (`jobs_store`), protegido con un lock.
+- Un hilo en segundo plano consume `tnm.validation.result`; si pierde la conexión con RabbitMQ, reintenta cada 5 segundos.
+- Consulta Neo4j con transacciones gestionadas (`execute_read`), que reintentan ante errores transitorios, como la primera consulta tras reiniciar Neo4j.
 
-# Colas
-RABBITMQ_REQUEST_QUEUE=requests
-RABBITMQ_VALIDATION_QUEUE=validations
-RABBITMQ_RECOMMENDATION_QUEUE=recommendations
-RABBITMQ_RESPONSE_QUEUE=responses
+### `services/recommender_service.py`: recomendador
 
-# Timeouts
-RABBITMQ_TIMEOUT=30             # segundos
-MESSAGE_TTL=3600000             # 1 hora en ms
-```
+- Ejecuta en Neo4j la misma consulta que `/get_stage_info` (ver [Modelo de datos](#modelo-de-datos-en-neo4j)).
+- Aplica el filtro de preferencia de cirugía.
+- Mantiene una sola conexión a Neo4j durante toda su vida; si pierde RabbitMQ, se reconecta cada 5 segundos.
+- Si falla al procesar un trabajo, publica un aviso de fallo en `tnm.validation.result`.
 
-### Admin Console
+### `services/ml_validator_service.py`: validador simulado
 
-Para monitorear colas en tiempo real:
+Regla actual (`evaluate_treatment`):
+- Rechaza un tratamiento si su nombre contiene `experimental`, `no recomendado` o `descartar`; si no, lo aprueba.
+- Asigna una confianza fija: `0.78` si aprueba y `0.42` si rechaza.
+- Si rechaza todos los tratamientos de un estadio, conserva el primero para no dejarlo vacío.
+- Identifica el modelo como `mock-validator` versión `0.1.0`.
 
-```
-http://localhost:15672/
-Usuario: guest
-Contraseña: guest
-```
+Con los datos actuales ninguno de los 8 tratamientos contiene esas palabras, así que **el validador aprueba todo**: `final_recommendations` coincide con `recommendations`. No consulta Neo4j ni usa los datos del paciente.
 
-**Vistas útiles:**
-- **Queues**: Ver colas, mensajes pendientes, consumidores
-- **Connections**: Conexiones activas de microservicios
-- **Channels**: Canales de comunicación
+#### Sustituirlo por un modelo de ML real (trabajo futuro)
 
-## Manejo de Errores
+- **Mantener el contrato de mensajes:** consumir `tnm.validation.request` y publicar en `tnm.validation.result` con los mismos campos. Así la API y la página no necesitan cambios.
+- **Sustituir la lógica** de `evaluate_treatment` (o de `validate_recommendations`) por la inferencia del modelo, y actualizar el campo `model` con su nombre y versión.
+- **Aprovechar los datos del paciente:** el mensaje ya incluye `context` (edad, receptores RP/RE, HER2, grado), que hoy no se usa.
+- **Darle su propia imagen Docker:** hoy los cuatro servicios de Python comparten la imagen `biomedicos-app`. Dependencias pesadas como scikit-learn o TensorFlow no deberían añadirse a esa imagen, sino a un Dockerfile propio del validador.
 
-### Dead-Letter Queue (DLQ)
+### `frontend/js/entradas.js`: página
 
-Si un mensaje falla 3 veces, se envía a:
-- **Cola**: `requests_dlq` / `validations_dlq` / `recommendations_dlq`
-- **TTL**: 24 horas (después se descarta)
+- Llama a la API con rutas relativas (`/api/...`), así que no depende del host ni del puerto.
+- Gestiona el envío, la consulta periódica del resultado, la presentación y los errores.
 
-```python
-# Ejemplo en ML Validator
-try:
-    validate_tnm_stage(message)
-except ValidationError as e:
-    # Reintento automático (hasta 3 veces)
-    channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
-except Exception as e:
-    # Enviar a DLQ
-    publish_to_dlq(message, error=str(e))
-```
+## Si la Evaluación no se Completa
 
-### Logging Centralizado
+La página **solo muestra tratamientos que han pasado por todo el pipeline** (recomendador y validador). El validador está pensado para evaluar cada tratamiento según la base de conocimiento y los datos del paciente; mostrar resultados que no ha evaluado podría presentar tratamientos que habría descartado.
 
-Cada servicio registra:
-- Request ID (para rastreo end-to-end)
-- Timestamp
-- Acción (publish, consume, error)
-- Detalles
+Por eso, cuando:
+- el envío al pipeline falla (por ejemplo, `503` porque RabbitMQ no está disponible);
+- el trabajo termina como `failed` (un microservicio avisó de un fallo);
+- tras 30 consultas (60 segundos) el trabajo sigue sin terminar (por ejemplo, porque un microservicio está detenido);
 
-```python
-logger.info(f"[{request_id}] Validating TNM stage: T={t}, N={n}, M={m}")
-logger.error(f"[{request_id}] Validation failed: {error}")
-```
+la página no muestra resultados y presenta el aviso **«No se pudo completar la evaluación»**, con el motivo y la sugerencia de reintentar. El detalle técnico del fallo (campo `error` de `/pipeline/result`) queda en la consola del navegador.
 
-## Docker Compose
+El endpoint `/get_stage_info`, que consulta Neo4j sin pasar por el pipeline, sigue disponible para pruebas y diagnóstico, pero la página no lo usa.
 
-### Arrancar con Docker
+*Hasta la v2.3, la página tenía un «modo degradado» que en estos casos mostraba los resultados de `/get_stage_info` sin validar; se eliminó en la v2.4.*
 
-```bash
-docker-compose up -d
-```
+## Modelo de Datos en Neo4j
 
-Servicios incluidos:
-- `neo4j` - Base de datos Neo4j
-- `api` - API Principal (Flask)
-- `recommender` - Microservicio Recommender
-- `ml-validator` - Microservicio Validator
-- `rabbitmq` - RabbitMQ Message Broker
+Los datos proceden de una ontología de estadificación del cáncer (`cancer_staging_terms.owl`) y se cargan desde `data/nodos.csv` y `data/relaciones.csv` (ver [DATABASE.md](DATABASE.md)).
 
-### Verificar Estado
+**Nodos que usan las consultas:**
 
-```bash
-# Ver logs en tiempo real
-docker-compose logs -f
+| Tipo (label de Neo4j) | Valores |
+|-----------------------|---------|
+| `T_Stage_Finding` | T0, T1, T2, T3, T4, Tx, Tis |
+| `N_Stage_Finding` | N0, N1, N2, N3, N4, Nx |
+| `M_Stage_Finding` | M0, M1, MX Stage Finding |
+| `R7_Stage`, `Sub_R7_Stage` | Estadios según la 7.ª edición de AJCC |
+| `R8_Stage`, `Sub_R8_Stage` | Estadios según la 8.ª edición de AJCC |
+| `Test` | 9 pruebas (Mammogram, Bone Scan, HER2 Test…) |
+| `Treatment` | 8 tratamientos (Surgery, Chemotherapy, Endocrine Therapy…) |
 
-# Ver contenedores activos
-docker ps
+El grafo incluye además otros nodos de la ontología (subcategorías de T/N/M, estado de receptores, grado histológico) que las consultas no usan.
 
-# Verificar conectividad RabbitMQ
-docker exec biomedicos-rabbitmq rabbitmq-diagnostics status
+**Relaciones:**
+- `Has_Stage`: de cada valor T, N y M a los estadios con los que se relaciona, de ambas ediciones.
+- `Has_Recommended_Test` y `Has_Treatment_Option`: de los estadios a sus pruebas y tratamientos. **Solo los estadios de la 8.ª edición las tienen.**
+
+**Consulta** (en `api.py` y en el recomendador):
+
+```cypher
+MATCH (n:N_Stage_Finding {label: $n_label})-[:Has_Stage]->(target),
+      (m:M_Stage_Finding {label: $m_label})-[:Has_Stage]->(target),
+      (t:T_Stage_Finding {label: $t_label})-[:Has_Stage]->(target)
+MATCH (target)-[:Has_Recommended_Test]->(test),
+      (target)-[:Has_Treatment_Option]->(treatment)
+RETURN target AS Stage,
+       collect(distinct test.label) AS RecommendedTests,
+       collect(distinct treatment.label) AS TreatmentOptions
 ```
 
-### Detener Servicios
+Consecuencias:
+- Solo se devuelven estadios de la 8.ª edición, porque son los únicos con pruebas y tratamientos.
+- El grafo relaciona cada valor T, N y M con varios estadios por separado, y la consulta devuelve todos los que comparten los tres. Por eso una combinación puede dar varios estadios (T2, N1, M0 → Stage IIA, IIB y IIIA) o ninguno (Tis, N0, M0 → 404). No es una tabla de estadificación AJCC completa.
 
-```bash
-# Detener (conserva datos)
-docker-compose down
+## Limitaciones Conocidas
 
-# Detener y limpiar volúmenes (CUIDADO: borra datos)
-docker-compose down -v
-```
+- **Trabajos en memoria:** se pierden al reiniciar la API, y solo puede haber una instancia de la API.
+- **Sin reintentos ni cola de mensajes fallidos (DLQ):** si un microservicio falla con un mensaje, avisa a la API y el mensaje se descarta.
+- **No se puede escalar con `docker compose up --scale`:** los servicios tienen `container_name` fijo. Para ejecutar varias réplicas de un microservicio habría que quitarlo; RabbitMQ repartiría los mensajes entre ellas.
+- **Seguridad pensada para entorno local:** `/pipeline/debug` no tiene autenticación, y RabbitMQ (`guest`/`guest`) y Neo4j (`neo4j`/`password`) usan credenciales por defecto.
+- **Validador simulado** y **datos del paciente sin usar**, salvo la preferencia de cirugía.
+- **La página muestra como máximo 3 estadios** por consulta.
 
-## Escalabilidad Horizontal
+## Mejoras Futuras
 
-Para escalar un microservicio específico:
+- Modelo de ML real para el validador (ver [arriba](#sustituirlo-por-un-modelo-de-ml-real-trabajo-futuro)).
+- Guardar los trabajos en un almacenamiento compartido (por ejemplo Redis) para no perderlos y poder escalar la API.
+- Reintentos y cola de mensajes fallidos en RabbitMQ.
+- Autenticación en la API y credenciales propias en RabbitMQ y Neo4j.
 
-```bash
-# En docker-compose.yml, aumentar réplicas
-recommender:
-  deploy:
-    replicas: 3  # 3 instancias del Recommender
+## Monitoreo y Depuración
 
-ml-validator:
-  deploy:
-    replicas: 2  # 2 instancias del Validator
-```
-
-RabbitMQ distribuye automáticamente los mensajes entre réplicas.
-
-## Monitoreo y Debugging
-
-### Ver Colas en Tiempo Real
-
-```python
-import pika
-
-conn = pika.BlockingConnection(
-    pika.ConnectionParameters(
-        host='localhost',
-        credentials=pika.PlainCredentials('guest', 'guest')
-    )
-)
-ch = conn.channel()
-
-# Contar mensajes en cola
-method = ch.queue_declare(queue='requests', passive=True)
-print(f"Mensajes pendientes: {method.method.message_count}")
-```
-
-### Simular Request
-
-```bash
-# Publicar mensaje de prueba a 'requests'
-curl -u guest:guest -H "content-type:application/json" \
-  -XPOST http://localhost:15672/api/exchanges/%2F/amq.default/publish \
-  -d'{"properties":{},"routing_key":"requests","payload":"test","payload_encoding":"string"}'
-```
-
-## Seguridad
-
-### En Producción
-
-```ini
-# .env (nunca en Git)
-RABBITMQ_USER=biomedicos_user
-RABBITMQ_PASSWORD=StrongPassword123!
-RABBITMQ_VHOST=/biomedicos
-
-# TLS
-RABBITMQ_PORT=5671              # AMQP + TLS
-RABBITMQ_CERT=/path/to/cert.pem
-RABBITMQ_KEY=/path/to/key.pem
-```
-
-### Validación de Mensajes
-
-Cada consumidor valida:
-- Esquema JSON (request_id, timestamp, etc)
-- Datos requeridos
-- Rangos válidos (edad, TNM labels, etc)
-
-```python
-def validate_message(message):
-    required_fields = ['request_id', 'timestamp', 't_label', 'n_label', 'm_label']
-    for field in required_fields:
-        if field not in message:
-            raise ValueError(f"Missing required field: {field}")
-    
-    # Validar rangos
-    if message['t_label'] not in ['T0', 'T1', 'T2', 'T3', 'T4', 'Tx']:
-        raise ValueError(f"Invalid T stage: {message['t_label']}")
-```
+- **Consola de RabbitMQ** (http://localhost:15672, `guest`/`guest`): en **Queues**, cada una de las tres colas debe tener 1 consumidor; si los mensajes se acumulan, el servicio que la consume está detenido o atascado.
+- **Registros:** `docker compose logs -f api recommender ml-validator`. Cada servicio indica cada trabajo procesado (`job_id=... enviado a validación`, `... validado y publicado`, `Resultado recibido para job_id=...`) y cada fallo.
+- **API:** `/pipeline/health` (RabbitMQ y consumidor) y `/pipeline/debug` (todos los trabajos).
+- **Prueba de extremo a extremo:** `.\scripts\test-pipeline.ps1`.
+- **Publicar un mensaje a mano** (por ejemplo, para probar el aviso de fallo con un mensaje sin TNM), con la API de administración de RabbitMQ:
+  ```bash
+  curl -u guest:guest -H "content-type:application/json" -X POST \
+    "http://localhost:15672/api/exchanges/%2F/amq.default/publish" \
+    -d '{"properties":{"delivery_mode":2},"routing_key":"tnm.recommendation.request","payload":"{\"job_id\":\"prueba-fallo\"}","payload_encoding":"string"}'
+  ```
+  Después, `GET /pipeline/result/prueba-fallo` devuelve `status: "failed"` con el motivo.
 
 ## Referencias
 
-- [RabbitMQ Official Docs](https://www.rabbitmq.com/documentation.html)
-- [AMQP Protocol](https://www.amqp.org/)
-- [Microservices Patterns](https://microservices.io/)
-- [Event-Driven Architecture](https://en.wikipedia.org/wiki/Event-driven_architecture)
+- [API.md](API.md) - Endpoints de la API
+- [DOCKER.md](DOCKER.md) - Instalación, servicios y puertos
+- [DATABASE.md](DATABASE.md) - Datos de Neo4j
+- [Documentación de RabbitMQ](https://www.rabbitmq.com/docs)
+- [Driver de Python para Neo4j](https://neo4j.com/docs/python-manual/current/)
