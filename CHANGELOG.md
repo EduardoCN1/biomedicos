@@ -1,5 +1,62 @@
 # Changelog
 
+## Versión 2.4 - Instalación con Docker y Pipeline más Robusto (2026-10-07)
+
+### Instalación
+
+- **Solo Docker:** `docker compose up -d --build` levanta el proyecto completo. Se eliminan la instalación local con Conda (`scripts/setup.ps1`, `scripts/run.ps1`) y sus guías (`SETUP.md`, `USO_DIARIO_SIN_DOCKER.md`).
+- **Carga automática de datos:** nuevo servicio `seed` que importa `data/*.csv` si Neo4j está vacío. `import_csv.py` usa ahora el driver oficial de Neo4j (se eliminan `py2neo` y `pandas`), importa en una sola transacción y no duplica datos.
+- **Validación de los datos:** `seed` comprueba el formato antes de importar y no arranca el proyecto con datos incorrectos.
+- **Arranque ordenado:** comprobaciones de salud en Neo4j (`cypher-shell`) y RabbitMQ (`check_port_connectivity`); cada servicio espera a sus dependencias.
+- **Neo4j fijado en la versión 5** (`neo4j:5`); antes `neo4j:latest`.
+- **Una sola imagen** (`biomedicos-app`) para `api`, `seed`, `recommender` y `ml-validator`.
+- **Frontend servido por nginx** en el puerto 5500 (configurable con `FRONTEND_PORT`). Bootstrap se carga desde CDN: ya no hace falta `npm install` (se elimina `package.json`).
+- **Configuración mínima:** `.env` opcional con `NEO4J_USER`, `NEO4J_PASSWORD`, `FRONTEND_PORT` y `API_PORT`. Se eliminan `.env.docker` y `.env.docker.example`.
+- **Tests dentro del contenedor:** `docker compose run --rm api python -m pytest tests -v` (`requirements-dev.txt`).
+
+### Funcionamiento
+
+- **Proxy `/api` en nginx:** la página llama a la API en su mismo origen, sin URL ni puerto fijos ni CORS. El puerto publicado de la API es configurable (`API_PORT`).
+- **Reintentos con Neo4j:** la API y el recomendador usan transacciones gestionadas; la primera consulta tras reiniciar Neo4j ya no falla con un 500.
+- **El recomendador ya no cierra su conexión a Neo4j** al reconectar con RabbitMQ.
+- **Fallos visibles:** si un microservicio no puede procesar un trabajo, lo avisa a la API (`status: "failed"` con el motivo) y la página muestra el error sin esperar 60 s.
+- **Se elimina el modo degradado:** si el pipeline no completa la evaluación, la página muestra «No se pudo completar la evaluación» en lugar de los resultados de `/get_stage_info` sin validar. Solo se muestran tratamientos que han pasado por el recomendador y el validador, como requerirá el futuro validador de ML, que tendrá en cuenta los datos del paciente.
+- **Datos corregidos:** 89 nodos tenían la etiqueta como lista (`["Stage IIA"]`) y ahora es texto; errata "Endocine Therapy" → "Endocrine Therapy".
+- **Código sin uso eliminado:** `main.py`, `backend/app.py`, `frontend/js/config.js`, la `enviar()` simulada de `main.js` y el arranque de `api.py` en el puerto 8080.
+- **`test-pipeline.ps1`:** muestra el JSON completo y acepta `-ApiUrl`.
+
+### Documentación
+
+- Reescritos README, `DOCKER.md`, `DATABASE.md`, `TROUBLESHOOTING.md`, `MICROSERVICIOS.md`, `API.md`, `ARCHITECTURE.md` y `DIAGRAMAS.md` a partir del sistema real. La documentación anterior describía colas, puertos (5001/5002) y modelos de ML que no existían.
+- Diagramas solo en Mermaid; se eliminan los SVG de `docs/diagramas_svg/`.
+
+### Actualización desde v2.3
+
+```powershell
+git pull
+docker compose down -v          # Recarga los datos corregidos
+docker compose up -d --build
+```
+
+La instalación local con Conda y Neo4j Desktop deja de estar soportada.
+
+---
+
+## Versión 2.3 - Microservicios con RabbitMQ (2026-05-05)
+
+*Entrada reconstruida en la v2.4 a partir del historial de Git.*
+
+- **Pipeline asíncrono de microservicios:** la API publica cada consulta en RabbitMQ; el recomendador (`services/recommender_service.py`) consulta Neo4j y el validador (`services/ml_validator_service.py`) evalúa los tratamientos. Colas: `tnm.recommendation.request` → `tnm.validation.request` → `tnm.validation.result`.
+- **Nuevos endpoints:** `/pipeline/submit`, `/pipeline/result/<job_id>`, `/pipeline/health` y `/pipeline/debug`.
+- **Validador simulado** (`mock-validator` 0.1.0), preparado para sustituirlo por un modelo de ML.
+- **Modo degradado** en el frontend: si el pipeline no responde, consulta `/get_stage_info` directamente.
+- **Preferencia de cirugía** en el formulario de Estadía Tumoral; si la paciente no la desea, se excluyen los tratamientos quirúrgicos.
+- **Docker Compose** con Neo4j, RabbitMQ, la API y los microservicios; script `scripts/test-pipeline.ps1`.
+
+*Nota:* la documentación de esta versión describía funcionalidades que no se implementaron (modelos de ML, colas `requests`/`validations`, puertos 5001/5002); se corrigió en la v2.4.
+
+---
+
 ## Versión 2.2 - Reestructuración Frontend y Mejoras UI/UX (2026-03-04)
 
 ###  Nuevas Funcionalidades de Interfaz
@@ -172,7 +229,7 @@
 ### Nuevas Funcionalidades
 
 **Documentación de Uso Diario:**
--  [USO_DIARIO.md](docs/USO_DIARIO.md) - Guía completa para uso día a día (después del setup inicial)
+-  `USO_DIARIO.md` - Guía completa para uso día a día (después del setup inicial)
   - Checklist rápido de 5 minutos
   - 6 pasos detallados con outputs esperados
   - Troubleshooting específico para problemas diarios
@@ -250,15 +307,15 @@
 **Documentación:**
 -  [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Diagramas de flujo
 -  [API.md](docs/API.md) - Documentación de endpoints (30+ ejemplos)
--  [SETUP.md](docs/SETUP.md) - Guía de instalación completa (15 pasos)
+-  `SETUP.md` - Guía de instalación completa (15 pasos)
 -  [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Soluciones a 10 problemas comunes
 -  [DIAGRAMAS.md](docs/DIAGRAMAS.md) - 5 diagramas Mermaid de arquitectura
--  [ESTADO_FINAL.md](docs/ESTADO_FINAL.md) - Resumen de cambios
+-  `ESTADO_FINAL.md` - Resumen de cambios
 -  [README.md](README.md) - Reescrito para nueva estructura
 
 **Scripts de Automatización:**
--  [scripts/setup.ps1](scripts/setup.ps1) - Instala Miniforge + dependencias (PowerShell)
--  [scripts/run.ps1](scripts/run.ps1) - Arranca servidor con .env loading (PowerShell)
+-  `scripts/setup.ps1` - Instala Miniforge + dependencias (PowerShell)
+-  `scripts/run.ps1` - Arranca servidor con .env loading (PowerShell)
 -  [scripts/import_csv.py](scripts/import_csv.py) - Importa CSV → Neo4j (mejorado)
 
 **Testing:**
@@ -382,19 +439,19 @@ ENVIRONMENT=development
 
 ## Roadmap - Próximas Versiones
 
-### v2.1 (Planeado)
-- [ ] Docker + docker-compose para Neo4j + App
-- [ ] GitHub Actions CI/CD (tests automáticos)
-- [ ] Validación de tipos con TypeScript (frontend)
+Docker y docker-compose, planeados para la v2.1, se incorporaron en la v2.3 y la v2.4.
 
 ### v2.5 (Planeado)
-- [ ] Frontend React SPA
+- [ ] GitHub Actions CI/CD (tests automáticos)
+- [ ] Guardar los trabajos del pipeline fuera de memoria (por ejemplo, Redis)
+- [ ] Reintentos y cola de mensajes fallidos (DLQ) en RabbitMQ
 - [ ] Autenticación JWT
 - [ ] Endpoints POST para guardar datos
 
 ### v3.0 (Futuro)
+- [ ] Modelo de Machine Learning real para el validador (hoy es simulado)
 - [ ] Migración a FastAPI
-- [ ] Modelo Machine Learning para predicciones
+- [ ] Frontend React SPA, con validación de tipos en TypeScript
 - [ ] WebSockets para actualizaciones en tiempo real
 
 ## Guía de Actualización v1.5 → v2.0
@@ -422,12 +479,15 @@ Copy-Item .env.example .env
 
 ### Para Nuevos Desarrolladores:
 
+*(Instrucciones de la v2.0; los scripts `setup.ps1` y `run.ps1` se eliminaron en la v2.4.)* Hoy basta con:
+
 ```powershell
-# Simplemente:
 git clone <repo>
-.\scripts\setup.ps1
-.\scripts\run.ps1
+cd biomedicos
+docker compose up -d --build
 ```
+
+Ver el [README](README.md#instalación).
 
 ---
 
@@ -442,6 +502,6 @@ git clone <repo>
 
 ---
 
-**Última actualización:** 2026-03-04
-**Versión actual:** 2.2
-**Status:** ✨ Listo para producción (con UI/UX mejorada)
+**Última actualización:** 2026-10-07
+**Versión actual:** 2.4
+**Status:** Proyecto de práctica en desarrollo. El validador es simulado: no apto para uso clínico.
