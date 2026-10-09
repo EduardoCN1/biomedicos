@@ -23,16 +23,17 @@ Esta guía describe cómo instalar y ejecutar el proyecto completo con Docker Co
 
 El archivo `docker-compose.yml` define los siguientes servicios:
 
-| Servicio | Contenedor | Puerto en el equipo | Descripción |
-|----------|------------|---------------------|-------------|
-| `frontend` | biomedicos-frontend | 5500 | nginx: sirve la carpeta `frontend/` y reenvía `/api/...` a la API (`nginx/default.conf`) |
-| `api` | biomedicos-api | 5000 | API Flask: recibe las consultas y publica los trabajos en RabbitMQ. La página la usa a través de `/api`; el puerto 5000 es para pruebas directas |
-| `recommender` | biomedicos-recommender | — | Consulta Neo4j y genera las recomendaciones |
-| `ml-validator` | biomedicos-ml-validator | — | Validador **simulado** de tratamientos (el modelo de ML real es trabajo futuro) |
-| `seed` | biomedicos-seed | — | Carga `data/*.csv` en Neo4j si está vacío y termina |
-| `rabbitmq` | biomedicos-rabbitmq | 5672 (AMQP) / 15672 (administración) | Gestor de mensajes entre la API y los microservicios |
-| `neo4j` | biomedicos-neo4j | 7474 (Browser) / 7687 (Bolt) | Base de datos de grafos (Neo4j 5) |
+| Servicio | Contenedor | Puerto en el equipo | Accesible desde | Descripción |
+|----------|------------|---------------------|-----------------|-------------|
+| `frontend` | biomedicos-frontend | 5500 | Este equipo y la red | nginx: sirve la carpeta `frontend/` y reenvía `/api/...` a la API (`nginx/default.conf`) |
+| `api` | biomedicos-api | 5000 | Solo este equipo | API Flask: recibe las consultas y publica los trabajos en RabbitMQ. La página la usa a través de `/api`; el puerto 5000 es para pruebas directas |
+| `recommender` | biomedicos-recommender | — | — | Consulta Neo4j y genera las recomendaciones |
+| `ml-validator` | biomedicos-ml-validator | — | — | Validador **simulado** de tratamientos (el modelo de ML real es trabajo futuro) |
+| `seed` | biomedicos-seed | — | — | Carga `data/*.csv` en Neo4j si está vacío y termina |
+| `rabbitmq` | biomedicos-rabbitmq | 5672 (AMQP) / 15672 (administración) | Solo este equipo | Gestor de mensajes entre la API y los microservicios |
+| `neo4j` | biomedicos-neo4j | 7474 (Browser) / 7687 (Bolt) | Solo este equipo | Base de datos de grafos (Neo4j 5) |
 
+- Solo la aplicación web (5500) es accesible desde la red. Los demás puertos se publican en `127.0.0.1`: responden en el propio equipo que ejecuta Docker, pero no desde otros. A través del proxy, `/api/pipeline/debug` está bloqueado, porque muestra los datos de todas las consultas.
 - `recommender` y `ml-validator` no exponen puertos: solo se comunican a través de RabbitMQ.
 - `api`, `seed`, `recommender` y `ml-validator` comparten la misma imagen (`biomedicos-app`), construida desde el `Dockerfile`; cada uno arranca con su propio comando.
 
@@ -60,7 +61,7 @@ cp .env.example .env
 | `NEO4J_USER` | `neo4j` | Usuario de Neo4j |
 | `NEO4J_PASSWORD` | `password` | Contraseña de Neo4j (mínimo 8 caracteres) |
 | `FRONTEND_PORT` | `5500` | Puerto de la aplicación web en el equipo |
-| `API_PORT` | `5000` | Puerto de la API en el equipo, para pruebas directas |
+| `API_PORT` | `5000` | Puerto de la API en el equipo, para pruebas directas desde el propio equipo |
 
 La contraseña de Neo4j solo se aplica la primera vez que se crea su volumen. Para cambiarla después hay que recrear el volumen (ver [Limpiar y Resetear](#limpiar-y-resetear)).
 
@@ -136,7 +137,20 @@ Si en Estadía Tumoral se indica que la paciente **no** desea cirugía, se exclu
 
 Si el pipeline de microservicios falla o no responde en 60 segundos, la página no muestra tratamientos: presenta el aviso «No se pudo completar la evaluación» y sugiere reintentar. Cuando un microservicio falla, avisa a la API y el aviso aparece al momento; si un servicio está detenido, al cabo de 60 segundos.
 
-La página también se puede abrir desde otro equipo de la red, en `http://<IP-de-este-equipo>:5500`, si el cortafuegos permite el acceso a ese puerto: llama a la API con rutas relativas (`/api/...`), así que no depende de `localhost`.
+### Acceso desde Otro Equipo de la Red
+
+La página se puede abrir desde cualquier equipo de la misma red, en `http://<IP-del-servidor>:5500`. La IP es la del **equipo que ejecuta Docker** (el servidor), no la del equipo que abre la página:
+
+```powershell
+ipconfig        # Windows: "Dirección IPv4" del adaptador de red en uso
+```
+```bash
+hostname -I     # Linux
+```
+
+La IP la asigna el router y puede cambiar de un día a otro. El cortafuegos del servidor debe permitir el acceso al puerto 5500. Funciona porque la página llama a la API con rutas relativas (`/api/...`) que nginx reenvía, así que no depende de `localhost`.
+
+Desde otros equipos solo es accesible la aplicación web; la API, Neo4j Browser y la consola de RabbitMQ se usan desde el propio servidor. Si no conecta, ver [TROUBLESHOOTING.md](TROUBLESHOOTING.md#11-no-se-abre-la-aplicación-desde-otro-equipo-de-la-red).
 
 ### Prueba Automática del Pipeline
 

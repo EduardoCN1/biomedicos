@@ -6,13 +6,16 @@ x-app: &app
   image: biomedicos-app
   pull_policy: never
 
+# Puertos: solo el de la aplicación web (frontend) es accesible desde la red. El resto se
+# publica en 127.0.0.1, es decir, solo desde el propio equipo que ejecuta Docker.
+
 services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: biomedicos-rabbitmq
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 10s
@@ -24,8 +27,8 @@ services:
     image: neo4j:5
     container_name: biomedicos-neo4j
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     environment:
       NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}"
     volumes:
@@ -59,8 +62,8 @@ services:
     container_name: biomedicos-api
     ports:
       # La página no usa este puerto (pasa por el proxy de frontend); sirve para
-      # pruebas directas como test-pipeline.ps1 o los ejemplos de docs/API.md.
-      - "${API_PORT:-5000}:5000"
+      # pruebas directas desde el propio equipo, como test-pipeline.ps1 o docs/API.md.
+      - "127.0.0.1:${API_PORT:-5000}:5000"
     environment:
       NEO4J_URI: "neo4j://neo4j:7687"
       NEO4J_USER: "${NEO4J_USER:-neo4j}"

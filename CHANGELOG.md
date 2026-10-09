@@ -16,7 +16,8 @@
 
 ### Funcionamiento
 
-- **Proxy `/api` en nginx:** la página llama a la API en su mismo origen, sin URL ni puerto fijos ni CORS. El puerto publicado de la API es configurable (`API_PORT`).
+- **Proxy `/api` en nginx:** la página llama a la API en su mismo origen, sin URL ni puerto fijos ni CORS, y se puede abrir desde otros equipos de la red. El puerto publicado de la API es configurable (`API_PORT`).
+- **Solo la aplicación web es accesible desde la red:** la API, Neo4j y RabbitMQ se publican en `127.0.0.1` (solo desde el propio servidor), y `/api/pipeline/debug`, que muestra los datos de todas las consultas, está bloqueado en el proxy.
 - **Reintentos con Neo4j:** la API y el recomendador usan transacciones gestionadas; la primera consulta tras reiniciar Neo4j ya no falla con un 500.
 - **El recomendador ya no cierra su conexión a Neo4j** al reconectar con RabbitMQ.
 - **Fallos visibles:** si un microservicio no puede procesar un trabajo, lo avisa a la API (`status: "failed"` con el motivo) y la página muestra el error sin esperar 60 s.

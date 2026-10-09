@@ -33,6 +33,8 @@ flowchart LR
     CSV --> Seed --> Neo4j
 ```
 
+Desde otros equipos de la red solo es accesible `frontend` (:5500). Los puertos de `api`, `rabbitmq` y `neo4j` se publican en `127.0.0.1`: solo responden en el propio servidor.
+
 ## Secuencia de una Consulta
 
 ```mermaid
