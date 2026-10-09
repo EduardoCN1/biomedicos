@@ -9,10 +9,43 @@ Los comandos están escritos para PowerShell. En Git Bash, los que contienen rut
 Los datos de origen son `data/nodos.csv` y `data/relaciones.csv` (134 nodos y 310 relaciones), versionados en Git.
 
 Cada vez que se levanta el proyecto, el servicio `seed` ejecuta `scripts/import_csv.py`:
+- **Primero valida el formato** de los datos (ver [Formato de los Datos](#formato-de-los-datos)). Si no es correcto, no importa nada y termina con error; `api` y `recommender` no arrancan hasta que se corrija el CSV.
 - **Si Neo4j está vacío**, importa todos los nodos y relaciones en una sola transacción (si algo falla, no deja datos a medias).
 - **Si Neo4j ya tiene datos**, no hace nada. Por eso es seguro levantar el proyecto tantas veces como se quiera: los datos no se duplican.
 
 Los datos se guardan en el volumen de Docker `biomedicos_neo4j_data` y se conservan entre `docker compose down` y `docker compose up`.
+
+## Formato de los Datos
+
+Los CSV son la **fuente de verdad** de los datos: lo que contienen es exactamente lo que se carga en Neo4j, sin transformaciones. Si se corrige o amplía algún dato, se hace en el CSV.
+
+Ambos archivos tienen una sola columna (encabezado `"n"` en nodos y `"r"` en relaciones). Cada fila es un objeto JSON, con las comillas dobles escapadas según el formato CSV (`""`), tal como los exporta Neo4j:
+
+```
+"n"
+"{""id"":1,""labels"":[""Class"",""Sub_N_Stage_Finding""],""properties"":{""label"":""N1mi"", ...}}"
+```
+
+**Nodos** (`data/nodos.csv`):
+
+| Campo | Contenido |
+|-------|-----------|
+| `id` | Identificador numérico único; las relaciones lo usan para enlazar nodos |
+| `labels` | Lista de tipos del nodo en Neo4j (por ejemplo `["Class", "T_Stage_Finding"]`) |
+| `properties` | Propiedades del nodo. `label` es su nombre (`"T1"`, `"Stage IIA"`, `"Surgery"`…) |
+
+**Relaciones** (`data/relaciones.csv`):
+
+| Campo | Contenido |
+|-------|-----------|
+| `id` | Identificador de la relación |
+| `type` | Tipo de relación (`Has_Stage`, `Has_Recommended_Test`, `Has_Treatment_Option`…) |
+| `start`, `end` | `id` de los nodos de origen y destino |
+| `properties` | Propiedades de la relación (hoy, siempre vacías) |
+
+**Regla que valida `seed`:** la propiedad `label` de cada nodo debe ser **texto**, no una lista. Las exportaciones de la ontología a veces la guardan como lista de un elemento (`"label":["Stage IIA"]`); en ese caso la API devolvería listas y las búsquedas por nombre en Neo4j no encontrarían el nodo. Hay que corregirlo en el CSV (`"label":"Stage IIA"`) antes de cargarlo.
+
+Ver [MICROSERVICIOS.md](MICROSERVICIOS.md#modelo-de-datos-en-neo4j) para qué nodos y relaciones usan las consultas.
 
 ## Recargar los Datos desde los CSV
 
@@ -123,9 +156,13 @@ Git Bash convierte las rutas que empiezan por `/` en rutas de Windows. Usar Powe
 MSYS_NO_PATHCONV=1 docker compose run --rm --no-deps neo4j neo4j-admin database dump neo4j --to-path=/backups
 ```
 
-### La API devuelve error justo después de reiniciar Neo4j
+### La primera consulta tras reiniciar Neo4j tarda unos segundos
 
-La primera consulta tras `docker compose start neo4j` puede fallar con `Unable to retrieve routing information`. La API se reconecta sola: repetir la consulta (o ejecutar `docker compose restart api`).
+Es normal: la API y el recomendador reintentan automáticamente mientras restablecen la conexión con Neo4j, y después responden con normalidad.
+
+### `seed` falla con "'label' que no es texto"
+
+Algún nodo de `data/nodos.csv` no cumple el [formato de los datos](#formato-de-los-datos). El mensaje enumera los nodos afectados (`nodo id=6: label=["Stage IB"]`); corregirlos en el CSV (`"label":"Stage IB"`) y volver a ejecutar `docker compose up -d`.
 
 ### Los datos están duplicados
 

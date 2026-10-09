@@ -16,7 +16,7 @@ Esta guía describe cómo instalar y ejecutar el proyecto completo con Docker Co
 3. **Recursos del sistema:**
    - Al menos 4 GB de RAM asignados a Docker
    - Unos 2 GB de disco para las imágenes
-   - Puertos libres: 5000, 5500, 5672, 7474, 7687, 15672 (el 5500 se puede cambiar, ver [Variables de entorno](#paso-2-opcional-crear-el-archivo-env))
+   - Puertos libres: 5000, 5500, 5672, 7474, 7687, 15672 (el 5000 y el 5500 se pueden cambiar, ver [Variables de entorno](#paso-2-opcional-crear-el-archivo-env))
    - Conexión a internet: la primera vez se descargan las imágenes, y la página carga Bootstrap, jQuery y Toastr desde CDN
 
 ## Servicios Incluidos
@@ -25,8 +25,8 @@ El archivo `docker-compose.yml` define los siguientes servicios:
 
 | Servicio | Contenedor | Puerto en el equipo | Descripción |
 |----------|------------|---------------------|-------------|
-| `frontend` | biomedicos-frontend | 5500 | nginx que sirve la carpeta `frontend/` |
-| `api` | biomedicos-api | 5000 | API Flask: recibe las consultas y publica los trabajos en RabbitMQ |
+| `frontend` | biomedicos-frontend | 5500 | nginx: sirve la carpeta `frontend/` y reenvía `/api/...` a la API (`nginx/default.conf`) |
+| `api` | biomedicos-api | 5000 | API Flask: recibe las consultas y publica los trabajos en RabbitMQ. La página la usa a través de `/api`; el puerto 5000 es para pruebas directas |
 | `recommender` | biomedicos-recommender | — | Consulta Neo4j y genera las recomendaciones |
 | `ml-validator` | biomedicos-ml-validator | — | Validador **simulado** de tratamientos (el modelo de ML real es trabajo futuro) |
 | `seed` | biomedicos-seed | — | Carga `data/*.csv` en Neo4j si está vacío y termina |
@@ -60,6 +60,7 @@ cp .env.example .env
 | `NEO4J_USER` | `neo4j` | Usuario de Neo4j |
 | `NEO4J_PASSWORD` | `password` | Contraseña de Neo4j (mínimo 8 caracteres) |
 | `FRONTEND_PORT` | `5500` | Puerto de la aplicación web en el equipo |
+| `API_PORT` | `5000` | Puerto de la API en el equipo, para pruebas directas |
 
 La contraseña de Neo4j solo se aplica la primera vez que se crea su volumen. Para cambiarla después hay que recrear el volumen (ver [Limpiar y Resetear](#limpiar-y-resetear)).
 
@@ -103,6 +104,7 @@ Que `seed` aparezca como `Exited (0)` es lo esperado: termina en cuanto carga lo
 Los registros de arranque deben incluir estos mensajes (`docker compose logs seed api recommender ml-validator`):
 
 ```
+biomedicos-seed          | [✓] Formato de los datos correcto
 biomedicos-seed          | [✓] Datos importados exitosamente a Neo4j
 biomedicos-api           | ✓ Servidor Waitress iniciado en http://0.0.0.0:5000
 biomedicos-api           | ✓ Consumidor escuchando cola: tnm.validation.result
@@ -132,7 +134,9 @@ Invoke-RestMethod http://localhost:5000/
 
 Si en Estadía Tumoral se indica que la paciente **no** desea cirugía, se excluyen los tratamientos quirúrgicos (Surgery, Lumpectomy, Mastectomy).
 
-Si el pipeline de microservicios no responde, la página consulta directamente a la API y muestra el aviso «Modo degradado» (resultados sin validar).
+Si el pipeline de microservicios falla o no responde en 60 segundos, la página no muestra tratamientos: presenta el aviso «No se pudo completar la evaluación» y sugiere reintentar. Cuando un microservicio falla, avisa a la API y el aviso aparece al momento; si un servicio está detenido, al cabo de 60 segundos.
+
+La página también se puede abrir desde otro equipo de la red, en `http://<IP-de-este-equipo>:5500`, si el cortafuegos permite el acceso a ese puerto: llama a la API con rutas relativas (`/api/...`), así que no depende de `localhost`.
 
 ### Prueba Automática del Pipeline
 
@@ -188,6 +192,7 @@ docker compose restart api       # Reiniciar un servicio
 | Cambio en | Qué hacer |
 |-----------|-----------|
 | `frontend/` | Recargar el navegador (la carpeta está montada en el contenedor) |
+| `nginx/default.conf` | `docker compose restart frontend` (Compose no detecta cambios en archivos montados) |
 | `backend/`, `services/`, `scripts/`, `tests/` | `docker compose up -d --build` |
 | `requirements.txt`, `requirements-dev.txt`, `Dockerfile` | `docker compose up -d --build` |
 | `docker-compose.yml` o `.env` | `docker compose up -d` |
@@ -234,12 +239,11 @@ Se vuelve a construir en el siguiente `docker compose up`. Evite `docker image p
 **Causa:** Otro programa usa uno de los puertos del proyecto. En Windows el mensaje completo termina en `bind: Only one usage of each socket address ... is normally permitted`.
 
 **Solución:**
-- **5500 (aplicación web):** cambiar `FRONTEND_PORT` en `.env` y ejecutar `docker compose up -d`.
-- **Resto de puertos:** cerrar el programa que lo usa. Para identificarlo en Windows:
+- **5500 (aplicación web) o 5000 (API):** cambiar `FRONTEND_PORT` o `API_PORT` en `.env` y ejecutar `docker compose up -d`. En macOS, el 5000 suele estar ocupado por el Receptor AirPlay.
+- **Resto de puertos:** cerrar el programa que lo usa. Para identificarlo en Windows (por ejemplo, el 7474):
   ```powershell
-  Get-Process -Id (Get-NetTCPConnection -LocalPort 5000 -State Listen).OwningProcess
+  Get-Process -Id (Get-NetTCPConnection -LocalPort 7474 -State Listen).OwningProcess
   ```
-- En macOS, el puerto 5000 lo usa el Receptor AirPlay (se desactiva en Ajustes del Sistema → General → AirDrop y Handoff).
 
 ### Error: "dependency failed to start: container biomedicos-neo4j ..."
 
@@ -260,7 +264,9 @@ docker compose logs neo4j
 docker compose logs seed
 ```
 
-El mensaje `[ERROR]` indica la causa (CSV no encontrado o fallo al importar). La importación se hace en una sola transacción, así que un error no deja datos a medias.
+El mensaje `[ERROR]` indica la causa:
+- **Formato de los datos:** algún nodo de `data/nodos.csv` tiene `label` como lista en lugar de texto. El mensaje enumera los nodos afectados; hay que corregir el CSV (ver [DATABASE.md](DATABASE.md#formato-de-los-datos)). Mientras tanto no arrancan `api` ni `recommender`.
+- **CSV no encontrado o fallo al importar.** La importación se hace en una sola transacción, así que un error no deja datos a medias.
 
 ### Los cambios de código no se reflejan
 

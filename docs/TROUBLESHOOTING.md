@@ -11,6 +11,7 @@ docker compose ps -a                        # Estado de los servicios (seed debe
 docker compose logs -f                      # Registros de todos los servicios
 docker compose logs api recommender ml-validator
 Invoke-RestMethod http://localhost:5000/pipeline/health   # RabbitMQ y consumidor de la API
+Invoke-RestMethod http://localhost:5000/pipeline/debug    # Todos los trabajos y su estado
 ```
 
 - **Consola de RabbitMQ** (http://localhost:15672, `guest`/`guest`): pestaña **Queues** para ver si los mensajes se acumulan en alguna cola.
@@ -40,20 +41,20 @@ listen tcp 0.0.0.0:5500: bind: Only one usage of each socket address
 
 **Soluciones:**
 
-a) **Puerto 5500 (aplicación web):** cambiarlo en `.env` y volver a levantar:
+a) **Puerto 5500 (aplicación web) o 5000 (API):** cambiarlo en `.env` y volver a levantar. En macOS, el 5000 suele estar ocupado por el Receptor AirPlay.
 ```ini
 FRONTEND_PORT=5501
+API_PORT=5001
 ```
 ```powershell
 docker compose up -d
 ```
+La página no se ve afectada por `API_PORT`, porque llama a la API a través de `/api`. Para `test-pipeline.ps1`, indicar el nuevo puerto: `.\scripts\test-pipeline.ps1 -ApiUrl http://localhost:5001`.
 
-b) **Resto de puertos (5000, 5672, 7474, 7687, 15672):** identificar el programa y cerrarlo:
+b) **Resto de puertos (5672, 7474, 7687, 15672):** identificar el programa y cerrarlo:
 ```powershell
-Get-Process -Id (Get-NetTCPConnection -LocalPort 5000 -State Listen).OwningProcess
+Get-Process -Id (Get-NetTCPConnection -LocalPort 7474 -State Listen).OwningProcess
 ```
-
-c) **macOS, puerto 5000:** lo usa el Receptor AirPlay. Se desactiva en Ajustes del Sistema → General → AirDrop y Handoff.
 
 ### 3. Error: "dependency failed to start: container biomedicos-neo4j ..."
 
@@ -75,43 +76,48 @@ c) **macOS, puerto 5000:** lo usa el Receptor AirPlay. Se desactiva en Ajustes d
 docker compose logs seed
 ```
 
-El mensaje `[ERROR]` indica la causa: CSV no encontrado o fallo al importar. La importación se hace en una sola transacción, así que un error no deja datos a medias. Corregir la causa y ejecutar `docker compose up -d`.
+El mensaje `[ERROR]` indica la causa:
+- **"... con 'label' que no es texto":** el CSV no cumple el [formato de los datos](DATABASE.md#formato-de-los-datos). El mensaje enumera los nodos afectados; hay que corregirlos en `data/nodos.csv`. No se importa nada, y `api` y `recommender` no arrancan hasta que se corrija.
+- **CSV no encontrado o fallo al importar.** La importación se hace en una sola transacción, así que un error no deja datos a medias.
+
+Corregir la causa y ejecutar `docker compose up -d`.
 
 ### 5. Los cambios de código no se reflejan
 
 - **Backend, microservicios, scripts o dependencias:** la imagen se construyó antes del cambio. Ejecutar `docker compose up -d --build`.
 - **Frontend:** el navegador puede estar usando una copia en caché. Recargar con `Ctrl+F5`.
+- **`nginx/default.conf`:** Compose no detecta cambios en archivos montados. Ejecutar `docker compose restart frontend`.
 
 ---
 
 ## Funcionamiento
 
-### 6. La API devuelve error 500 con "Unable to retrieve routing information"
+### 6. Errores "Unable to retrieve routing information" o "Cannot resolve address neo4j:7687"
 
-**Síntomas:** En `docker compose logs api`:
-```
-neo4j.exceptions.ServiceUnavailable: Unable to retrieve routing information
-```
+**Síntomas:** La API devuelve error 500 en `/get_stage_info` o `/labels/*`, o los trabajos del pipeline terminan como `failed` con `recommender: ...` en el campo `error`. En los registros aparece `neo4j.exceptions.ServiceUnavailable`.
 
-**Causa:** Neo4j se reinició (o aún estaba arrancando) mientras la API seguía en marcha. La primera consulta posterior falla porque la API intenta usar la conexión anterior; las siguientes ya funcionan. No tiene relación con la terminal desde la que se ejecutan los comandos.
+**Causa:** Neo4j no está disponible. Si solo se reinició, la API y el recomendador reintentan automáticamente durante unos segundos y la consulta termina bien (solo tarda un poco más). Si el error persiste, Neo4j está detenido o no arranca. No tiene relación con la terminal desde la que se ejecutan los comandos.
 
-**Solución:** Repetir la consulta. Si persiste, comprobar que Neo4j está `healthy` (`docker compose ps`) y reiniciar la API:
+**Solución:** Comprobar que Neo4j está `healthy` (`docker compose ps`) y, si no, levantarlo y revisar sus registros:
 ```powershell
-docker compose restart api
+docker compose up -d
+docker compose logs neo4j
 ```
 
-### 7. Aviso "Modo degradado" en la página
+### 7. Aviso "No se pudo completar la evaluación" en la página
 
-**Causa:** El pipeline de microservicios no respondió (RabbitMQ, el recomendador o el validador no están disponibles, o el trabajo no terminó en 60 segundos). La página consultó directamente a la API y muestra resultados **sin validar**.
+**Causa:** El pipeline de microservicios no completó la consulta: RabbitMQ no estaba disponible, un microservicio falló al procesarla (y lo avisó), o el trabajo no terminó en 60 segundos (por ejemplo, porque un microservicio está detenido). La página no muestra tratamientos para no presentar resultados sin evaluar. El motivo técnico aparece en la consola del navegador (F12).
 
 **Diagnóstico:**
 ```powershell
 docker compose ps
 Invoke-RestMethod http://localhost:5000/pipeline/health
-docker compose logs recommender ml-validator
+docker compose logs api recommender ml-validator
 ```
 
-`/pipeline/health` debe indicar `"rabbitmq": "up"` y `"consumer": "running"`. Si algún servicio está detenido: `docker compose up -d`.
+- `/pipeline/health` debe indicar `"rabbitmq": "up"` y `"consumer": "running"`.
+- Si un microservicio falló, la API registra `✗ Fallo recibido para job_id=...` con el motivo, que también aparece en el campo `error` de `/pipeline/result/<job_id>`.
+- Si algún servicio está detenido: `docker compose up -d`.
 
 ### 8. "No se encontraron tratamientos para estos parámetros"
 
@@ -126,13 +132,16 @@ docker compose logs recommender ml-validator
 
 **Solución:** Comprobar la conexión a internet y, en la pestaña **Network** de las herramientas de desarrollo (F12), que no haya errores al cargar `cdnjs.cloudflare.com` o `code.jquery.com` (pueden estar bloqueados por un proxy o un bloqueador de contenido).
 
-### 10. La página no se conecta a la API (error de red o CORS)
+### 10. La página no se conecta a la API (error 502)
 
-**Síntomas:** En la consola del navegador aparecen errores al llamar a `http://127.0.0.1:5000/...`.
+**Síntomas:** En la pestaña **Network** del navegador, las llamadas a `/api/...` responden `502 Bad Gateway`.
+
+**Causa:** nginx no puede llegar a la API: el servicio `api` está detenido o no ha terminado de arrancar (por ejemplo, porque `seed` falló).
 
 **Soluciones:**
-- Comprobar que la API responde: `Invoke-RestMethod http://localhost:5000/` debe devolver `"En ejecución"`.
-- El frontend llama a la API en `http://127.0.0.1:5000`, así que la página debe abrirse en el mismo equipo donde corre Docker.
+- Comprobar el estado: `docker compose ps -a`. Si `api` no está en marcha, revisar `docker compose logs seed api` y ejecutar `docker compose up -d`.
+- Comprobar que la API responde directamente: `Invoke-RestMethod http://localhost:5000/` debe devolver `"En ejecución"`.
+- Si se modificó `nginx/default.conf`, reiniciar nginx: `docker compose restart frontend`.
 
 ---
 
@@ -148,7 +157,7 @@ docker compose run --rm api python -m pytest tests -v
 
 ### 12. `test-pipeline.ps1` termina con "TIMEOUT"
 
-El trabajo no llegó a completarse en 30 segundos. Revisar los registros que el propio script muestra en el paso 3 y el estado de los servicios (ver [problema 7](#7-aviso-modo-degradado-en-la-página)).
+El trabajo no llegó a completarse en 30 segundos. Revisar los registros que el propio script muestra en el paso 3 y el estado de los servicios (ver [problema 7](#7-aviso-no-se-pudo-completar-la-evaluación-en-la-página)).
 
 ---
 
